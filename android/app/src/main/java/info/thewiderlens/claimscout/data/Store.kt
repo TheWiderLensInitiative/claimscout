@@ -35,6 +35,11 @@ class Store(private val ctx: Context) {
     private val accountsKey = stringPreferencesKey("accounts")
     private val notifiedKey = stringPreferencesKey("notified")
     private val msClientKey = stringPreferencesKey("ms_client_id")
+    private val onboardedKey = stringPreferencesKey("onboarded")
+
+    /** Set once the first-run questionnaire is finished (or skipped) on this phone. */
+    val onboardedFlow = ctx.dataStore.data.map { it[onboardedKey] == "1" }
+    suspend fun setOnboarded(done: Boolean) = ctx.dataStore.edit { it[onboardedKey] = if (done) "1" else "0" }
 
     val pairingFlow = ctx.dataStore.data.map { p -> p[pairingKey]?.let { Sealed.open(it) }?.let { json.decodeFromString<Pairing>(it) } }
     val accountsFlow = ctx.dataStore.data.map { p ->
@@ -43,7 +48,7 @@ class Store(private val ctx: Context) {
 
     suspend fun pairing(): Pairing? = pairingFlow.first()
     suspend fun setPairing(p: Pairing?) = ctx.dataStore.edit {
-        if (p == null) it.remove(pairingKey) else it[pairingKey] = Sealed.seal(json.encodeToString(p))
+        if (p == null) { it.remove(pairingKey); it.remove(onboardedKey) } else it[pairingKey] = Sealed.seal(json.encodeToString(p))
     }
 
     suspend fun accounts(): List<MailAccount> = accountsFlow.first()

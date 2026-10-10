@@ -80,6 +80,7 @@ fun App(vm: Vm) {
     if (!vm.loaded) return
     when {
         pairing == null -> PairScreen(vm)
+        vm.quizActive -> Onboarding(vm)
         vm.openId != null -> DetailScreen(vm)
         else -> MainScreen(vm)
     }
@@ -152,9 +153,11 @@ fun ListScreen(vm: Vm) {
             if (vm.tab == Tab.Matches) {
                 Text("${s.likely} likely · ${s.maybe} maybe · ${s.open} open settlements" + if (s.refreshing) " · checking…" else "",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
-                if (!s.profile_set) Card(Modifier.fillMaxWidth().clickable { vm.select(Tab.Settings) }) {
-                    Text("Tell ClaimScout which companies and products you've used (Settings → Profile) so it can find settlements for you.",
-                        Modifier.padding(12.dp))
+                if (s.unanswered > 0) Card(Modifier.fillMaxWidth().clickable { vm.startQuiz(full = false) }) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("${s.unanswered} settlement${if (s.unanswered == 1) "" else "s"} to check", fontWeight = FontWeight.SemiBold)
+                        Text("Answer a few quick questions to see if they fit you.", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
@@ -344,27 +347,13 @@ fun SettingsScreen(vm: Vm) {
             OutlinedButton({ addingGmail = true }) { Text("Add Gmail") }
             OutlinedButton({ vm.startOutlook() }, enabled = vm.outlookCode == null) { Text("Add Outlook") }
         }
-        if (vm.outlookCode == null && vm.msClientId.isEmpty() || vm.error?.contains("client ID") == true) {
-            OutlinedTextField(vm.msClientId, { vm.msClientId = it.trim() }, label = { Text("Microsoft app client ID (one-time setup)") },
-                singleLine = true, modifier = Modifier.fillMaxWidth())
-            TextButton({ openUrl(ctx, "https://github.com/TheWiderLensInitiative/claimscout/blob/main/docs/OUTLOOK.md") }) { Text("How to get one (free, 3 minutes)") }
-        }
-        vm.outlookCode?.let { dc ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Enter this code at ${dc.verifyUrl}:")
-                    Text(dc.userCode, style = MaterialTheme.typography.headlineMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ copy(ctx, dc.userCode); openUrl(ctx, dc.verifyUrl) }) { Text("Copy code and open") }
-                    }
-                    Text("Waiting for you to sign in…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
+        OutlookSetup(vm, ctx)
         if (addingGmail) GmailDialog(vm) { addingGmail = false }
 
         HorizontalDivider()
         Text("Your profile", style = MaterialTheme.typography.titleMedium)
+        Text("Built from your questionnaire answers. Edit it here, or redo the questions.", style = MaterialTheme.typography.bodySmall)
+        OutlinedButton({ vm.startQuiz(full = false, redo = true) }) { Text("Redo the questionnaire") }
         vm.profile?.let { ProfileEditor(it) { p -> vm.saveProfile(p) } }
 
         HorizontalDivider()
@@ -378,6 +367,28 @@ fun SettingsScreen(vm: Vm) {
         Text("ClaimScout is free and open source. It isn't a law firm or a settlement administrator. " +
             "Settlement listings come from public sources; always read the official notice.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** The Microsoft client ID box (until one is set) and the sign-in code while Outlook is connecting. */
+@Composable
+fun OutlookSetup(vm: Vm, ctx: Context) {
+    if (vm.error?.contains("client ID") == true || (vm.msClientId.isEmpty() && vm.outlookCode == null && vm.askedForMsId)) {
+        OutlinedTextField(vm.msClientId, { vm.msClientId = it.trim() }, label = { Text("Microsoft app client ID (one-time setup)") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        TextButton({ openUrl(ctx, "https://github.com/TheWiderLensInitiative/claimscout/blob/main/docs/OUTLOOK.md") }) { Text("How to get one (free, 3 minutes)") }
+    }
+    vm.outlookCode?.let { dc ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Enter this code at ${dc.verifyUrl}:")
+                Text(dc.userCode, style = MaterialTheme.typography.headlineMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button({ copy(ctx, dc.userCode); openUrl(ctx, dc.verifyUrl) }) { Text("Copy code and open") }
+                }
+                Text("Waiting for you to sign in…", style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
 

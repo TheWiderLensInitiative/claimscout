@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS proofs (
     created_at REAL,
     UNIQUE (settlement_id, account, message_id)
 );
+CREATE TABLE IF NOT EXISTS answers (
+    settlement_id TEXT PRIMARY KEY,
+    answer TEXT,                  -- yes | no | unsure | unused (didn't pick the company at all)
+    at REAL
+);
 CREATE TABLE IF NOT EXISTS claims (
     id INTEGER PRIMARY KEY,
     settlement_id TEXT UNIQUE,
@@ -64,6 +69,12 @@ class DB:
         self.lock = threading.Lock()
         with self.lock:
             self.conn.executescript(SCHEMA)
+            have = {r[1] for r in self.conn.execute("PRAGMA table_info(settlements)")}
+            # questionnaire fields, filled by questions.py (rules first, AI later); not touched by refreshes
+            for col in ("label TEXT", "category TEXT", "question TEXT", "enriched INTEGER DEFAULT 0"):
+                if col.split()[0] not in have:
+                    self.conn.execute(f"ALTER TABLE settlements ADD COLUMN {col}")
+            self.conn.commit()
 
     def q(self, sql, args=()):
         with self.lock:

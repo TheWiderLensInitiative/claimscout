@@ -15,6 +15,8 @@ import info.thewiderlens.claimscout.data.Detail
 import info.thewiderlens.claimscout.data.MailAccount
 import info.thewiderlens.claimscout.data.Pairing
 import info.thewiderlens.claimscout.data.Profile
+import info.thewiderlens.claimscout.data.QItem
+import info.thewiderlens.claimscout.data.Questionnaire
 import info.thewiderlens.claimscout.data.Row
 import info.thewiderlens.claimscout.data.Status
 import info.thewiderlens.claimscout.data.parsePairLink
@@ -23,8 +25,12 @@ import info.thewiderlens.claimscout.mail.MailSearch
 import info.thewiderlens.claimscout.mail.Outlook
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/** First run walks every step; "update" only asks about settlements that arrived since. */
+enum class Step { Welcome, HomeState, PastStates, Pick, Ask, Email, Notify, Done }
 
 enum class Tab(val label: String, val view: String) { Matches("For you", "matches"), Browse("Browse", "all"), Claims("My claims", "claimed"), Settings("Settings", "") }
 
@@ -32,6 +38,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
     val store = (app as ClaimScoutApp).store
     val pairing = store.pairingFlow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val accounts = store.accountsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val onboarded = store.onboardedFlow.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     var loaded by mutableStateOf(false)
 
     var tab by mutableStateOf(Tab.Matches)
@@ -47,15 +54,31 @@ class Vm(app: Application) : AndroidViewModel(app) {
     var findingProof by mutableStateOf(false)
     var profile by mutableStateOf<Profile?>(null)
 
+    // questionnaire
+    var quizActive by mutableStateOf(false)
+    var quizFull by mutableStateOf(true)
+    var step by mutableStateOf(Step.Welcome)
+    var quiz by mutableStateOf<Questionnaire?>(null)
+    var homeState by mutableStateOf("")
+    var pastStates by mutableStateOf(setOf<String>())
+    var groupIndex by mutableStateOf(0)
+    var picked by mutableStateOf(setOf<String>())        // ids picked on the current chip page
+    var toAsk by mutableStateOf(listOf<QItem>())          // picked items still waiting for their yes/no
+    var yesCount by mutableStateOf(0)
+
     // Outlook sign-in in progress
     var outlookCode by mutableStateOf<Outlook.DeviceCode?>(null)
     var msClientId by mutableStateOf(BuildConfig.MS_CLIENT_ID)
+    var askedForMsId by mutableStateOf(false)   // show the client-ID box only after "Add Outlook" needed it
 
     init {
         viewModelScope.launch {
             if (msClientId.isEmpty()) msClientId = store.msClientId()
             loaded = true
-            if (store.pairing() != null) reload()
+            if (store.pairing() != null) {
+                reload()
+                if (!store.onboardedFlow.first()) startQuiz(full = true)
+            }
         }
     }
 
@@ -78,6 +101,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
             Api(p).status()   // proves the token and certificate before saving
             store.setPairing(p)
             reload()
+            if (!store.onboardedFlow.first()) startQuiz(full = true)
         }
         return true
     }
@@ -149,7 +173,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
     }
 
     fun startOutlook() = launch {
-        if (msClientId.isBlank()) throw IllegalStateException("Paste your Microsoft app's client ID first (see the help link).")
+        if (msClientId.isBlank()) { askedForMsId = true; throw IllegalStateException("Paste your Microsoft app's client ID first (see the help link).") }
         store.setMsClientId(msClientId)
         val dc = Outlook.start(msClientId.trim())
         outlookCode = dc
@@ -159,4 +183,79 @@ class Vm(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeAccount(a: MailAccount) = launch { store.removeAccount(a) }
+
+    // --- questionnaire ---------------------------------------------------------------------------------------
+
+    /** full = first run (welcome, states, questions, email, notifications); otherwise just the new questions. */
+    fun startQuiz(full: Boolean, redo: Boolean = false) {
+        quizFull = full; quizActive = true; groupIndex = 0; picked = emptySet(); toAsk = emptyList(); yesCount = 0
+        step = if (full) Step.Welcome else Step.Pick
+        launch {
+            if (redo) api().resetAnswers()
+            val p = api().profile()
+            homeState = p.states.firstOrNull() ?: ""
+            pastStates = p.past_states.toSet()
+            if (!full) loadQuiz()
+        }
+    }
+
+    private suspend fun loadQuiz() {
+        quiz = api().questionnaire()
+        groupIndex = 0; picked = emptySet()
+        if ((quiz?.count ?: 0) == 0) afterQuestions()
+    }
+
+    fun saveStates() = launch {
+        val p = api().profile()
+        api().saveProfile(p.copy(states = listOfNotNull(homeState.takeIf { it.isNotBlank() }),
+            past_states = pastStates.filter { it != homeState }))
+        step = Step.Pick
+        loadQuiz()
+    }
+
+    fun togglePick(id: String) { picked = if (id in picked) picked - id else picked + id }
+
+    /** Done with one chip page: what wasn't picked is "unused"; what was picked gets its own question next. */
+    fun finishGroup() {
+        val g = quiz?.groups?.getOrNull(groupIndex) ?: return
+        val unused = g.items.filter { it.id !in picked }.associate { it.id to "unused" }
+        toAsk = g.items.filter { it.id in picked }
+        picked = emptySet()
+        launch {
+            if (unused.isNotEmpty()) status = api().answer(unused)
+            if (toAsk.isEmpty()) nextGroup() else step = Step.Ask
+        }
+    }
+
+    fun answer(item: QItem, a: String) {
+        toAsk = toAsk.drop(1)
+        if (a == "yes") yesCount++
+        launch {
+            status = api().answer(mapOf(item.id to a), if (a != "no") listOf(item.label) else emptyList())
+            if (toAsk.isEmpty()) nextGroup()
+        }
+    }
+
+    private suspend fun nextGroup() {
+        val groups = quiz?.groups ?: emptyList()
+        if (groupIndex + 1 < groups.size) { groupIndex++; step = Step.Pick } else afterQuestions()
+    }
+
+    private suspend fun afterQuestions() {
+        status = api().status()
+        step = if (quizFull) Step.Email else Step.Done
+    }
+
+    /** Leave the rest for later (first run still goes on to email and notifications). */
+    fun skipQuestions() = launch { afterQuestions() }
+
+    fun nextFromEmail() { step = Step.Notify }
+    fun nextFromNotify() { step = Step.Done }
+
+    fun finishQuiz() = launch {
+        store.setOnboarded(true)
+        quizActive = false
+        tab = Tab.Matches
+        reload()
+    }
 }

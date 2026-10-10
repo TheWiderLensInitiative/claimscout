@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
-from . import ai, matcher, pairing, proof
+from . import ai, matcher, pairing, proof, questions
 from .collectors import community, topclassactions
 from .db import DB
 
@@ -38,6 +38,11 @@ class Hub:
                 except Exception as e:   # one broken source must not stop the others
                     report["errors"].append(f"{name}: {e}")
                     log(f"refresh {name} failed: {e}")
+            questions.ensure_labels(self.db)
+            try:
+                report["questions_ai"] = await questions.enrich(self.db, log=log)
+            except Exception as e:
+                log(f"questionnaire AI failed: {e}")
             full = self.db.get("rematch", True)
             self.db.put("rematch", False)   # cleared first: a profile saved during this run sets it again
             report["matching"] = await matcher.run(self.db, only_new=not full, log=log)
@@ -110,7 +115,8 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         return {"version": VERSION, "open": n["n"], "likely": n["likely"] or 0, "maybe": n["maybe"] or 0,
                 "claims": db.q("SELECT COUNT(*) n FROM claims")[0]["n"], "refreshing": hub.lock.locked(),
                 "last_refresh": db.get("last_refresh"), "ai": ai.public_settings(db),
-                "profile_set": bool(matcher.profile(db)["companies"] or matcher.profile(db)["states"])}
+                "profile_set": bool(matcher.profile(db)["companies"] or matcher.profile(db)["states"]),
+                "unanswered": questions.build(db, matcher.profile(db))["count"]}
 
     @app.get("/api/profile", dependencies=[api])
     def get_profile():
@@ -230,15 +236,36 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
     @app.post("/api/settlements/{sid}/match", dependencies=[api])
     async def rematch_one(sid: str):
         s = _get(sid)
-        p = matcher.profile(db)
-        m = matcher.rule_match(p, s)
-        if ai.enabled(db):
-            try:
-                m = await matcher.ai_match(db, p, s)
-            except ai.AIError as e:
-                m["reason"] = (m["reason"] + f" (AI unavailable: {e})").strip()
+        m = await matcher.match_one(db, matcher.profile(db), s, questions.answers(db).get(sid))
         matcher.save(db, sid, m)
         return m
+
+    @app.get("/api/questionnaire", dependencies=[api])
+    def questionnaire(all: bool = False):
+        return questions.build(db, matcher.profile(db), only_unanswered=not all)
+
+    @app.post("/api/answers", dependencies=[api])
+    async def post_answers(body: dict = Body(...)):
+        """{answers: {settlement_id: yes|no|unsure|unused}, used: ["labels picked"]}. Scores those settlements now."""
+        given = {k: v for k, v in (body.get("answers") or {}).items() if v in questions.ANSWERS}
+        n = questions.save(db, given)
+        used = [str(x).strip()[:80] for x in body.get("used") or [] if str(x).strip()]
+        if used:
+            p = matcher.profile(db)
+            p["companies"] = list(dict.fromkeys(p["companies"] + used))[:300]
+            db.put("profile", p)
+        p = matcher.profile(db)
+        for sid, a in given.items():
+            s = db.settlement(sid)
+            if s:   # rules only here so the phone gets an instant answer; AI plans come with the next refresh
+                matcher.save(db, sid, await matcher.match_one(db, p, s, a, use_ai=False))
+        return {"saved": n, "status": status()}
+
+    @app.delete("/api/answers", dependencies=[api])
+    def reset_answers():
+        db.x("DELETE FROM answers")
+        db.put("rematch", True)
+        return {"ok": True}
 
     @app.post("/api/settlements/{sid}/proof", dependencies=[api])
     async def add_proof(sid: str, body: dict = Body(...)):

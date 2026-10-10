@@ -7,7 +7,7 @@ import json
 import re
 import time
 
-from . import ai
+from . import ai, questions
 
 PROFILE_DEFAULT = {"name": "", "states": [], "past_states": [], "companies": [], "about": ""}
 
@@ -101,22 +101,38 @@ async def run(db, use_ai=True, only_new=False, log=print) -> dict:
     """Score every open settlement. AI reads the ones the rules didn't rule out."""
     p = profile(db)
     done = {r["settlement_id"]: r["method"] for r in db.q("SELECT settlement_id, method FROM matches")}
-    counts = {"rules": 0, "ai": 0, "ai_errors": 0}
+    given = questions.answers(db)
+    counts = {"rules": 0, "ai": 0, "ai_errors": 0, "answers": 0}
     for s in db.settlements():
         if only_new and s["id"] in done:
             continue
-        m = rule_match(p, s)
-        if use_ai and ai.enabled(db) and m["verdict"] != "unlikely":
-            try:
-                m = await ai_match(db, p, s)
-                counts["ai"] += 1
-            except ai.AIError as e:
-                counts["ai_errors"] += 1
-                log(f"AI skipped {s['id']}: {e}")
-        else:
-            counts["rules"] += 1
+        m = await match_one(db, p, s, given.get(s["id"]), use_ai, counts, log)
         save(db, s["id"], m)
     return counts
+
+
+async def match_one(db, p, s, answer=None, use_ai=True, counts=None, log=print) -> dict:
+    """The user's own answer decides; rules and AI only fill in the rest (and the email search plan for a yes)."""
+    counts = counts if counts is not None else {"rules": 0, "ai": 0, "ai_errors": 0, "answers": 0}
+    direct = questions.answer_match(answer)
+    if direct and direct["verdict"] == "unlikely":
+        counts["answers"] += 1
+        return direct
+    m = rule_match(p, s)
+    if use_ai and ai.enabled(db) and (m["verdict"] != "unlikely" or direct):
+        try:
+            m = await ai_match(db, p, s)
+            counts["ai"] += 1
+        except ai.AIError as e:
+            counts["ai_errors"] += 1
+            log(f"AI skipped {s['id']}: {e}")
+    else:
+        counts["rules"] += 1
+    if direct:   # a yes: keep the search plan, trust the answer
+        counts["answers"] += 1
+        m = {**m, "score": direct["score"], "verdict": "likely", "method": "answer", "reason": direct["reason"],
+             "proof_plan": m.get("proof_plan") or fallback_plan(db, s)}
+    return m
 
 
 def fallback_plan(db, s) -> dict:

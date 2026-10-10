@@ -39,7 +39,16 @@ import javax.net.ssl.X509TrustManager
                                 val source: String? = null, val match: Match? = null, val proof_plan: Plan? = null,
                                 val claim: Claim? = null, val proofs: List<Proof> = emptyList())
 @Serializable data class Status(val version: String, val open: Int, val likely: Int, val maybe: Int, val claims: Int,
-                                val refreshing: Boolean = false, val profile_set: Boolean = false)
+                                val refreshing: Boolean = false, val profile_set: Boolean = false, val unanswered: Int = 0)
+@Serializable data class QItem(val id: String, val label: String, val title: String, val question: String? = null,
+                               val eligibility: String? = null, val states: List<String> = emptyList(),
+                               val deadline: String? = null, val award: String? = null, val proof_needed: Int? = null,
+                               val answer: String? = null)
+@Serializable data class QGroup(val category: String, val prompt: String, val items: List<QItem>)
+@Serializable data class Questionnaire(val states_known: Boolean = false, val groups: List<QGroup> = emptyList(),
+                                       val count: Int = 0, val skipped_by_state: Int = 0, val answered: Int = 0)
+@Serializable data class AnswersBody(val answers: Map<String, String>, val used: List<String> = emptyList())
+@Serializable data class AnswersReply(val saved: Int, val status: Status)
 @Serializable data class Profile(val name: String = "", val states: List<String> = emptyList(),
                                  val past_states: List<String> = emptyList(), val companies: List<String> = emptyList(),
                                  val about: String = "")
@@ -123,5 +132,9 @@ class Api(private val pairing: Pairing, private val onGood: suspend (String) -> 
     suspend fun profile() = json.decodeFromString<Profile>(call("GET", "/profile"))
     suspend fun saveProfile(p: Profile) = call("PUT", "/profile", json.encodeToString(p))
     suspend fun refresh() = call("POST", "/refresh", "{}")
+    suspend fun questionnaire(all: Boolean = false) = json.decodeFromString<Questionnaire>(call("GET", "/questionnaire?all=$all"))
+    suspend fun answer(answers: Map<String, String>, used: List<String> = emptyList()) =
+        json.decodeFromString<AnswersReply>(call("POST", "/answers", json.encodeToString(AnswersBody(answers, used)))).status
+    suspend fun resetAnswers() = call("DELETE", "/answers", "{}")
     suspend fun newSince(since: Double) = json.decodeFromString<NewItems>(call("GET", "/new?since=$since"))
 }

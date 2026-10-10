@@ -1,6 +1,5 @@
 package info.thewiderlens.claimscout
 
-import android.Manifest
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,7 +21,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handle(intent)
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         setContent {
             // Logo blue is #0081FE; buttons use a deeper blue by day (white text passes WCAG AA) and a lighter one at night.
             val scheme = if (isSystemInDarkTheme())

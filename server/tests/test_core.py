@@ -141,3 +141,53 @@ def test_api(db, monkeypatch):
     assert ai.settings(db)["api_key"] == "sk-secret"
     # pairing page is dashboard-only
     assert c.get("/api/pair", headers=h).status_code == 404
+
+
+def test_labels_and_categories():
+    from claimscout.questions import rule_category, rule_label
+    assert rule_label("$600K Crossroads Trading data breach") == "Crossroads Trading"
+    assert rule_label("Toyota air bag control units $78.5M") == "Toyota"
+    assert rule_label("$117M pork price-fixing") == "Pork"
+    assert rule_category({"title": "$600K Crossroads Trading data breach"}) == "Data breaches & privacy"
+    assert rule_category({"title": "$23.9M Costa Del Mar sunglasses repair"}) == "Home & products"
+    assert rule_category({"title": "$4.5M Hearthside Food Solutions child labor"}) == "Work"
+    assert rule_category({"title": "Mystery thing", "summary": "Owners of a Kia vehicle"}) == "Cars"
+
+
+def test_questionnaire_flow(db, monkeypatch):
+    from claimscout import questions
+    [s] = topclassactions.parse_feed(FEED)
+    db.upsert_settlement(s)
+    c = TestClient(create_app(db))
+    h = {"Authorization": "Bearer " + pairing.token(db)}
+    monkeypatch.setattr("claimscout.app.Hub.refresh_soon", lambda self, rematch=False: None)
+    q = c.get("/api/questionnaire", headers=h).json()
+    assert q["count"] == 1 and q["groups"][0]["items"][0]["label"] == "Acme Widget"
+    assert c.get("/api/status", headers=h).json()["unanswered"] == 1
+    # someone who only ever lived in Texas never sees the Illinois-only one
+    c.put("/api/profile", json={"states": ["TX"]}, headers=h)
+    assert c.get("/api/questionnaire", headers=h).json()["count"] == 0
+    c.put("/api/profile", json={"states": ["IL"]}, headers=h)
+    r = c.post("/api/answers", json={"answers": {s["id"]: "yes", "bogus": "yes"}, "used": ["Acme Widget"]}, headers=h).json()
+    assert r["saved"] == 1 and r["status"]["likely"] == 1 and r["status"]["unanswered"] == 0
+    d = c.get(f"/api/settlements/{s['id']}", headers=h).json()
+    assert d["match"]["method"] == "answer" and d["proof_plan"]["keywords"]   # a yes still gets an email plan
+    assert "Acme Widget" in c.get("/api/profile", headers=h).json()["companies"]
+    c.post("/api/answers", json={"answers": {s["id"]: "unused"}}, headers=h)
+    assert c.get("/api/settlements", headers=h).json()["settlements"] == []
+    c.request("DELETE", "/api/answers", json={}, headers=h)
+    assert c.get("/api/questionnaire", headers=h).json()["count"] == 1
+
+
+def test_enrich_with_ai(db, monkeypatch):
+    from claimscout import questions
+    [s] = topclassactions.parse_feed(FEED)
+    db.upsert_settlement(s)
+    db.put("ai", {"provider": "local", "base_url": "http://x/v1"})
+    async def fake(db_, system, user, max_tokens=900):
+        return json.dumps([{"id": s["id"], "label": "Acme Widgets", "category": "Home & products",
+                            "question": "Did you buy an Acme Widget in Illinois between 2020 and 2023?"}])
+    monkeypatch.setattr(ai, "chat", fake)
+    assert asyncio.run(questions.enrich(db)) == 1
+    item = questions.build(db, matcher.PROFILE_DEFAULT)["groups"][0]
+    assert item["category"] == "Home & products" and item["items"][0]["question"].startswith("Did you buy")
