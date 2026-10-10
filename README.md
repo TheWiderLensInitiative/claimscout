@@ -18,8 +18,9 @@ subscription and no paid APIs.
 
 ## How it works
 
-1. **Collect.** Every 6 hours the PC reads the public feed of open settlements from Top Class Actions and any
-   community lists you add (plain JSON files; see below). It keeps the eligibility rules, proof requirements,
+1. **Collect.** Every 6 hours the PC reads the public lists of open settlements from Top Class Actions,
+   ClassAction.org and OpenClassActions, plus any community lists you add (plain JSON files; see below). The same
+   settlement listed on several sites is merged into one. It keeps the eligibility rules, proof requirements,
    deadline and the official administrator's claim link.
 2. **Match.** Your profile lists the companies and products you've used and the states you've lived in. Keyword
    rules rule out state-only settlements and flag the obvious matches. If AI is on, the model reads each remaining

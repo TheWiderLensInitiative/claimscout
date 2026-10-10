@@ -38,7 +38,7 @@ PROMPTS = dict((c, p) for c, p, _ in CATEGORIES) | {OTHER[0]: OTHER[1]}
 
 _DESCRIPTORS = (r"\b(data breach|class action|settlement|antitrust|price-fixing|false advertising|privacy violations?|"
                 r"digital privacy|data privacy|data sharing|website tracking|tracking pixel|wage and hour violations?|"
-                r"child labor|bipa violation|bipa|vppa|tcpa|denied benefits|unauthorized loans|return policy|"
+                r"child labor|text messages?|unwanted (texts|calls|faxes)|bipa violation|bipa|vppa|tcpa|denied benefits|unauthorized loans|return policy|"
                 r"inaccurate credit report|hard inquiry dispute|credit reporting|defective|recall|insurance price-fixing|"
                 r"soil contamination|safety|repair|delamination|real estate commission|non-bank atm|record fees|"
                 r"fee|rewards|car insurance|insurance|period tracker|air bag control units|airbag|emissions warranty|"
@@ -46,9 +46,13 @@ _DESCRIPTORS = (r"\b(data breach|class action|settlement|antitrust|price-fixing|
 
 
 def rule_label(title: str) -> str:
+    # "Ford - PowerShift Transmissions", "Lands' End Data Breach Settlement — Up to $5,000", "Skin360 (Illinois)"
+    title = re.split(r"\s+[—–]\s+|\s+-\s+", title.strip())[0]
+    title = re.sub(r"\s*\([^)]*\)", "", title).strip() or title
     t = re.sub(r"^\$[\d.,]+\s*[MBK]?\b\s*|\s*\$[\d.,]+\s*[MBK]?$", "", title.strip())
     t = re.sub(r"\s+(Illinois|New York|California|Louisiana)\b(?=.*\b(BIPA|insurance|car)\b)", "", t)
     short = re.sub(_DESCRIPTORS, "", t, flags=re.I).strip(" ,-–") or t
+    short = re.sub(r"\s+\$[\d.,]+\s*[MBK]?\b.*$", "", short).strip(" ,-–") or short   # "Teleflora $6M", "Container Store $780K Accessibility"
     return short[0].upper() + short[1:]
 
 

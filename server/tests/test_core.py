@@ -4,9 +4,9 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from claimscout import ai, matcher, pairing, proof
+from claimscout import ai, matcher, pairing, proof, questions
 from claimscout.app import create_app
-from claimscout.collectors import community, topclassactions
+from claimscout.collectors import classactionorg, community, merge, openclassactions, topclassactions
 from claimscout.db import DB
 from claimscout.text import parse_date, states_in
 
@@ -290,3 +290,57 @@ def test_newsletters_are_not_proof_or_payouts(db):
     # and the search goes to the company's own address
     from claimscout.proof import plan_for
     assert plan_for(db.settlement("x"), {"senders": [], "keywords": ["Equifax"]})["senders"] == ["equifax.com"]
+
+
+CAO_CARD = '''<div id="lands-end-data-breach" data-name="Lands’ End - Data Breach" class="settlement-card"> <h3 class="mv0">
+<a href="https://landsenddatasettlement.com/" class="js-settlement-link db pt1" data-slug="lands-end-data-breach" target="_blank">Lands’ End - Data Breach Class Action Settlement</a></h3>
+<div><span class="db tw-gray">Settlement<br> Payout</span> <span class="db green f4 lh-copy">$60 - $5,000</span></div>
+<div><span class="db tw-gray"><br>Deadline</span> <span class="db f5">10/22/26</span></div>
+<div><span class="db tw-gray">Proof <br>Required?</span> <span class="db f5">No</span></div>
+<p class="f6 lh-copy mv0">You may be included if your information was compromised in the Lands’ End data breach.</p></div>'''
+
+OCA_ROW = '''<a class="dir-row" role="row" href="https://openclassactions.com/settlements/data-breaches/lands-end-data-breach-settlement.php"
+ data-deadline="2026-10-22" data-proof="none" data-added="2026-09-01" data-category="Data Breach" data-region="US-CA">
+<span class="dir-name" role="cell">Lands’ End Data Breach Settlement — Up to $5,000</span>
+<span class="dir-details" role="cell">Up to $5,000 for documented losses or $60 cash.</span>
+<span class="dir-proof" role="cell"><span class="badge none">No Proof</span></span></a>
+<a class="dir-row" href="https://openclassactions.com/settlements/x-wage.php" data-deadline="2026-10-22" data-proof="automatic" data-category="Employment" data-region="">
+<span class="dir-name">X Wage Settlement</span><span class="dir-details">Automatic</span></a>'''
+
+
+def test_more_sources_and_merge(db):
+    [c] = classactionorg.parse_page(CAO_CARD)
+    assert c["id"] == "cao:lands-end-data-breach" and c["title"] == "Lands’ End - Data Breach"
+    assert (c["deadline"], c["proof_needed"], c["award"]) == ("2026-10-22", 0, "$60 - $5,000")
+    assert c["claim_url"] == "https://landsenddatasettlement.com/"
+    [o] = openclassactions.parse_page(OCA_ROW)   # the automatic payment has nothing to file
+    assert (o["deadline"], o["proof_needed"], o["states"]) == ("2026-10-22", 0, ["CA"])
+    assert openclassactions.claim_link('<a href="https://www.landsenddatasettlement.com/?utm_source=openclassactions.com" '
+                                       'target="_blank">File Claim</a>') == "https://www.landsenddatasettlement.com/"
+    # same settlement on two sites: by name and deadline, and by its website once the link is known
+    kept, dropped = merge([[c], [dict(o)]])
+    assert [k["id"] for k in kept] == [c["id"]] and dropped == {o["id"]: c["id"]}
+    kept, dropped = merge([[c], [dict(o, deadline=None, claim_url="https://www.landsenddatasettlement.com/claim")]])
+    assert dropped == {o["id"]: c["id"]}
+    # two settlements on one administrator's portal are not the same settlement
+    a = dict(c, id="tca:a", title="Acme", claim_url="https://forms.ksacms.com/eform/acme", website=None, deadline=None)
+    b = dict(c, id="tca:b", title="Bolt", claim_url="https://forms.ksacms.com/eform/bolt", website=None, deadline=None)
+    b2 = dict(b, id="cao:b")
+    kept, dropped = merge([[a, b], [b2]])
+    assert len(kept) == 2 and dropped == {"cao:b": "tca:b"}
+    # a duplicate stored by an earlier refresh hands over the user's answer
+    db.upsert_settlement(c)
+    db.upsert_settlement(o)
+    db.x("INSERT INTO answers(settlement_id, answer, at) VALUES(?,?,?)", (o["id"], "yes", 1))
+    db.drop_duplicates({o["id"]: c["id"]})
+    assert db.settlement(o["id"]) is None
+    assert db.q("SELECT settlement_id FROM answers") == [{"settlement_id": c["id"]}]
+
+
+def test_labels_and_logo_guards():
+    from claimscout import logos
+    assert questions.rule_label("Ford - PowerShift Transmissions") == "Ford"
+    assert questions.rule_label("Teleflora $6M Settlement") == "Teleflora"
+    assert questions.rule_label("CBIZ Data Breach Settlement — Est. $100 or Up to $5,000") == "CBIZ"
+    assert questions.rule_label("Skin360 - Biometric Privacy (Illinois)") == "Skin360"
+    assert logos._foreign("https://www.lincoln.ac.nz") and not logos._foreign("https://www.ford.com")

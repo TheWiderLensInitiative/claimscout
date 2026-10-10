@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from . import ai, logos, matcher, pairing, payouts, proof, questions
 from .text import max_amount
-from .collectors import community, topclassactions
+from .collectors import classactionorg, community, merge, openclassactions, topclassactions
 from .db import DB
 
 VERSION = "0.1.0"
@@ -29,16 +29,25 @@ class Hub:
     async def refresh(self, log=print) -> dict:
         """Pull every source, then score what's new (or everything if the profile changed)."""
         async with self.lock:
-            report = {"new": 0, "seen": 0, "errors": []}
-            sources = [("Top Class Actions", topclassactions.fetch())]
+            report = {"new": 0, "seen": 0, "merged": 0, "errors": []}
+            # most detailed first: when several sites list the same settlement, the first one's listing is kept
+            sources = [("Top Class Actions", topclassactions.fetch()), ("ClassAction.org", classactionorg.fetch()),
+                       ("OpenClassActions", openclassactions.fetch(self.db.get("oca_links", {})))]
             sources += [(u, community.fetch(u)) for u in self.db.get("feeds", [])]
-            for name, job in sources:
-                try:
-                    for s in await job:
-                        report["new" if self.db.upsert_settlement(s) else "seen"] += 1
-                except Exception as e:   # one broken source must not stop the others
-                    report["errors"].append(f"{name}: {e}")
-                    log(f"refresh {name} failed: {e}")
+            lists = []
+            for (name, _), got in zip(sources, await asyncio.gather(*(job for _, job in sources), return_exceptions=True)):
+                if isinstance(got, BaseException):   # one broken source must not stop the others
+                    report["errors"].append(f"{name}: {got}")
+                    log(f"refresh {name} failed: {got}")
+                    got = []
+                if name == "OpenClassActions" and got:
+                    self.db.put("oca_links", {s["id"]: s["claim_url"] for s in got if s["claim_url"]})
+                lists.append(got)
+            kept, dropped = merge(lists)
+            for s in kept:
+                report["new" if self.db.upsert_settlement(s) else "seen"] += 1
+            report["merged"] = len(dropped)
+            self.db.drop_duplicates(dropped)
             questions.ensure_labels(self.db)
             try:
                 report["questions_ai"] = await questions.enrich(self.db, log=log)

@@ -29,7 +29,9 @@ WIKIDATA = "https://www.wikidata.org/w/api.php"
 _BIZ = re.compile(r"compan|corporat|\bbank|credit union|insur|health|hospital|medical|retail|manufactur|brand|agency|"
                   r"\bchain\b|pharmac|financial|automo|logistic|universit|software|provider|maker|\bfirm\b|store|"
                   r"conglomerate|business|enterprise|operator|\bgroup\b|organization|association|foundation|"
-                  r"network|media|publisher|fitness|clothing|appliance|telemedicine|supermarket|insurer|bureau", re.I)
+                  r"network|media|publisher|fitness|clothing|appliance|telemedicine|supermarket|insurer|bureau|"
+                  r"cooperative|college|school|clinic|dental|airline|restaurant|casino|game|developer|lender|brokerage|"
+                  r"utility|laborator|website|service|staffing|trucking|carrier", re.I)
 
 
 def defendant(summary: str | None) -> str | None:
@@ -129,12 +131,34 @@ def _words(s: str) -> set[str]:
             if w not in {"the", "of", "and", "inc", "co", "company", "corp", "group", "usa", "us"}}
 
 
+class Busy(Exception):
+    """Wikidata asked us to slow down; try the rest next refresh."""
+
+
+_wd_gate = asyncio.Semaphore(1)
+_wd_until = 0.0
+
+
+async def _wikidata(c: httpx.AsyncClient, params: dict) -> dict:
+    """One request at a time, a short pause between them, and a 10 minute break when told to slow down."""
+    global _wd_until
+    if time.time() < _wd_until:
+        raise Busy()
+    async with _wd_gate:
+        r = await c.get(WIKIDATA, params=params)
+        await asyncio.sleep(0.5)
+    if r.status_code == 429 or "json" not in r.headers.get("content-type", ""):
+        _wd_until = time.time() + 600
+        raise Busy()
+    return r.json()
+
+
 async def _entity(c: httpx.AsyncClient, name: str) -> str | None:
     """A business whose name actually matches: every word of one name appears in the other."""
-    r = await c.get(WIKIDATA, params={"action": "wbsearchentities", "search": name, "language": "en",
-                                      "format": "json", "limit": 7, "type": "item"})
+    found = await _wikidata(c, {"action": "wbsearchentities", "search": name, "language": "en",
+                                "format": "json", "limit": 7, "type": "item"})
     want = _words(name)
-    for h in r.json().get("search", []):
+    for h in found.get("search", []):
         got = _words(h.get("label", "")) | _words((h.get("match") or {}).get("text", ""))
         named = _words(h.get("label", ""))
         if _BIZ.search(h.get("description", "")) and want and (want <= got or (named and named <= want)):
@@ -151,8 +175,7 @@ def _us_first(url: str) -> tuple:
 
 async def _claims(c, qid) -> tuple[str | None, str | None]:
     """(official website, Commons logo file) of a Wikidata item."""
-    r = await c.get(WIKIDATA, params={"action": "wbgetclaims", "entity": qid, "format": "json"})
-    cl = r.json().get("claims", {})
+    cl = (await _wikidata(c, {"action": "wbgetclaims", "entity": qid, "format": "json"})).get("claims", {})
     def values(prop):
         return [v for s in cl.get(prop, []) if isinstance(v := s.get("mainsnak", {}).get("datavalue", {}).get("value"), str)]
     sites = sorted(values("P856"), key=_us_first)
@@ -220,24 +243,72 @@ async def _site_icon(c, site: str) -> bytes | None:
     return None
 
 
+def _foreign(site: str) -> bool:
+    return bool(re.search(r"\.(?!us/)[a-z]{2}/", re.sub(r"^https?://", "", site).split("/")[0] + "/"))
+
+
+# Price-fixing cases are named after the product, not a company: no logo for "Turkey" or "Pork".
+_PRODUCTS = {"turkey", "pork", "beef", "chicken", "broiler", "broilers", "salmon", "eggs", "egg", "milk", "dairy",
+             "tuna", "peanuts", "potatoes", "sugar", "cheese", "drywall", "lumber", "opioids", "insulin", "generic"}
+
+
+async def _guess_site(c, name: str) -> str | None:
+    """'Teleflora' -> https://www.teleflora.com, but only if that page's title names the company."""
+    words = [w for w in re.findall(r"[a-z0-9]+", (name or "").lower().replace("’", "").replace("'", ""))
+             if w not in {"the", "inc", "llc", "co", "corp"}]
+    if not words or len(words) > 4 or len("".join(words)) < 5 or \
+            {"university", "college", "school", "schools", "county", "city", "state", "hospital", "department"} & set(words):
+        return None   # institutions rarely live at name.com, and someone else often does
+    for site in (f"https://www.{''.join(words)}.com", f"https://www.{'-'.join(words)}.com"):
+        try:
+            r = await c.get(site, timeout=8)
+        except httpx.HTTPError:
+            continue
+        head = r.text[:60_000].lower() if r.status_code == 200 else ""
+        names = re.findall(r"<title[^>]*>(.*?)</title>", head, re.S) + \
+            re.findall(r"og:site_name[\"'][^>]*content=[\"']([^\"']+)", head)
+        title = " ".join(" ".join(names).split())
+        flat = re.sub(r"[^a-z0-9]", "", title)
+        if flat and all(w in flat for w in words) and "domain" not in title and "for sale" not in title:
+            return str(r.url).split("?")[0]
+        if len(words) == 1:
+            break
+    return None
+
+
 async def find(c: httpx.AsyncClient, names: list[str], domain: str | None = None) -> tuple[bytes | None, str | None]:
-    """(png, website) for the first name that resolves to a company with a usable logo."""
+    """(png, website) for the first name that resolves to a company with a usable logo.
+    Raises Busy when nothing was found but Wikidata couldn't be asked (so it's worth trying again later)."""
     sites, commons = [], None
+    names = [n for n in names if n and not (_words(n) and _words(n) <= _PRODUCTS | {"prices", "price", "fixing", "pharmaceuticals", "drugs"})]
     if domain:
         sites.append("https://" + re.sub(r"^https?://|/.*$", "", domain))
+    if png := await _tiny(c, names + [_sld(x) for x in sites]):
+        return png, sites[0] if sites else None
+    busy = False
     for n in names:
         if not n:
             continue
-        qid = await _entity(c, n)
-        if qid:
-            site, commons = await _claims(c, qid)
-            if site:
-                sites.append(site)
+        try:
+            qid = await _entity(c, n)
+            if qid:
+                site, commons = await _claims(c, qid)
+                if site and _foreign(site):
+                    site, commons = None, None   # Lincoln University (NZ) is not Lincoln University (Missouri)
+                if site:
+                    sites.append(site)
+                break
+        except Busy:
+            busy = True
             break
-    if png := await _tiny(c, names + [_sld(x) for x in sites]):
+    if not sites and not busy:
+        for n in names[-1:]:   # the label: the company as the settlement names it
+            if site := await _guess_site(c, n):
+                sites.append(site)
+    if sites and (png := await _tiny(c, [_sld(x) for x in sites])):
         return png, sites[0] if sites else None
     for site in dict.fromkeys(sites):
-        if re.search(r"\.(?!us$)[a-z]{2}(/|$)", re.sub(r"^https?://", "", site).split("/")[0] + "/"):
+        if _foreign(site):
             continue   # a foreign site (whirlpool.co.jp) often has a different local brand
         if png := await _site_icon(c, site):
             return png, site
@@ -245,6 +316,8 @@ async def find(c: httpx.AsyncClient, names: list[str], domain: str | None = None
         url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(commons)}?width=512"
         if png := await _get_image(c, url, 64):
             return png, sites[0] if sites else None
+    if busy:
+        raise Busy()
     return None, sites[0] if sites else None
 
 
@@ -263,6 +336,8 @@ async def resolve(db, limit=200, log=print) -> int:
             async with sem:
                 try:
                     png, site = await find(c, [s["company"], defendant(s["summary"]), s["label"]], s["domain"])
+                except Busy:
+                    return   # left untried; the next refresh asks again
                 except Exception as e:   # one company's broken site must not stop the rest
                     log(f"logo {s['id']}: {e}")
                     png, site = None, None

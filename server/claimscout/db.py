@@ -120,6 +120,18 @@ class DB:
                tuple(row.values()))
         return new
 
+    def drop_duplicates(self, dropped: dict):
+        """Remove listings that turned out to be another source's copy of a settlement we keep.
+        Answers, claims and saved proof move to the kept one (unless it has its own), which is then rescored."""
+        for old, keep in dropped.items():
+            if not self.q("SELECT 1 FROM settlements WHERE id=?", (old,)):
+                continue
+            for table in ("answers", "claims", "proofs"):
+                self.x(f"UPDATE OR IGNORE {table} SET settlement_id=? WHERE settlement_id=?", (keep, old))
+                self.x(f"DELETE FROM {table} WHERE settlement_id=?", (old,))
+            self.x("DELETE FROM matches WHERE settlement_id IN (?,?)", (old, keep))
+            self.x("DELETE FROM settlements WHERE id=?", (old,))
+
     def settlement(self, sid):
         rows = self.q("SELECT * FROM settlements WHERE id=?", (sid,))
         return _decode(rows[0]) if rows else None
