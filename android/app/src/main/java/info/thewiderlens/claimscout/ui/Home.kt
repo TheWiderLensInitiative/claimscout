@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,9 +90,14 @@ fun MainScreen(vm: Vm) {
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->
+                    val waiting = if (t == Tab.Claims) vm.status?.money_waiting ?: 0 else 0
                     NavigationBarItem(selected = vm.tab == t, onClick = { vm.select(t) }, label = { Text(t.label) },
-                        icon = { Icon(when (t) { Tab.Matches -> Icons.Filled.Home; Tab.Browse -> Icons.Filled.Search
-                            Tab.Claims -> Icons.Filled.CheckCircle; Tab.Settings -> Icons.Filled.Settings }, null) })
+                        icon = {
+                            BadgedBox(badge = { if (waiting > 0) androidx.compose.material3.Badge { Text("$waiting") } }) {
+                                Icon(when (t) { Tab.Matches -> Icons.Filled.Home; Tab.Browse -> Icons.Filled.Search
+                                    Tab.Claims -> Icons.Filled.CheckCircle; Tab.Settings -> Icons.Filled.Settings }, null)
+                            }
+                        })
                 }
             }
         }
@@ -112,7 +118,11 @@ fun ListScreen(vm: Vm) {
     val rows = if (vm.tab == Tab.Browse && vm.sortByPay) vm.rows.sortedByDescending { it.amount ?: -1.0 } else vm.rows
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, 24.dp)) {
         when (vm.tab) {
-            Tab.Matches -> item { Hero(vm) }
+            Tab.Matches -> {
+                item { Hero(vm) }
+                val waiting = vm.payouts.filter { it.needs_action }
+                if (waiting.isNotEmpty()) item { MoneyWaitingBanner(waiting.size) { vm.select(Tab.Claims) } }
+            }
             Tab.Browse -> item { BrowseFilters(vm) }
             Tab.Claims -> item { ClaimsHeader(vm) }
             else -> {}
@@ -172,10 +182,70 @@ fun BrowseFilters(vm: Vm) = Column(verticalArrangement = Arrangement.spacedBy(8.
 }
 
 @Composable
-fun ClaimsHeader(vm: Vm) {
+fun MoneyWaitingBanner(n: Int, onClick: () -> Unit) = Surface(Modifier.fillMaxWidth().clickable(onClick = onClick),
+    shape = RoundedCornerShape(16.dp), color = Color(0xFF1B7F3B)) {
+    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("💳", fontSize = 28.sp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("$n payment${if (n == 1) "" else "s"} waiting for you", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text("Virtual cards and payment links expire. Tap to claim them.", color = Color.White.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+fun ClaimsHeader(vm: Vm) = Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val ctx = LocalContext.current
+    val waiting = vm.payouts
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Money waiting", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        TextButton({ vm.checkPayouts() }, enabled = !vm.checkingPayouts) { Text(if (vm.checkingPayouts) "Checking…" else "Check email now") }
+    }
+    if (vm.checkingPayouts) LinearProgressIndicator(Modifier.fillMaxWidth())
+    vm.payoutNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    if (waiting.isEmpty()) Text(
+        "ClaimScout checks your email, Spam included, every few hours for settlement payments: virtual cards, " +
+            "“choose your payment” links, PayPal/Venmo payments and checks.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    waiting.forEach { PayoutCard(vm, it, ctx) }
     val filed = vm.rows.count { it.claim_status != null }
     val paid = vm.rows.count { it.claim_status == "paid" }
-    if (filed > 0) Text("$filed claim${if (filed == 1) "" else "s"} filed · $paid paid", style = MaterialTheme.typography.titleMedium)
+    if (filed > 0) Text("Your claims · $filed filed · $paid paid", style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp))
+}
+
+/** One payout email: what it is, how much, when it expires, where it was (Spam!), and a button to open it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PayoutCard(vm: Vm, p: info.thewiderlens.claimscout.data.Payout, ctx: android.content.Context) = Card(
+    Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(if (p.needs_action) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer)) {
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(when (p.kind) { "virtual_card" -> "💳"; "payment_choice" -> "👆"; "digital_payment" -> "💸"; "check" -> "📬"
+                "deficiency" -> "⚠️"; "denied" -> "✖️"; else -> "✉️" }, fontSize = 26.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(p.label, style = MaterialTheme.typography.titleMedium)
+                Text(p.settlement ?: p.subject ?: "", style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            p.amount?.let { Text(it, fontFamily = Montserrat, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            p.expires?.let { e -> deadlineText(e)?.let { (t, urgent) -> Badge(if (t == "Closed") "Expired $e" else t.replace("Ends", "Expires").replace("left", "to claim"), if (urgent) Tone.Red else Tone.Amber) } }
+            if (p.folder == "spam" || p.folder == "junk") Badge("Was in Spam", Tone.Red)
+            p.date?.let { Badge("Sent $it", Tone.Gray) }
+            p.account?.let { Badge(it, Tone.Gray) }
+        }
+        p.action?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!p.link.isNullOrBlank()) Button({ openUrl(ctx, p.link) }) { Text("Open email") }
+            TextButton({ vm.setPayoutStatus(p, "done") }) { Text(when { p.kind == "deficiency" -> "I responded"; p.needs_action -> "I claimed it"; else -> "Got it" }) }
+            TextButton({ vm.setPayoutStatus(p, "dismissed") }) { Text("Not mine") }
+        }
+    }
 }
 
 /** A settlement in a list: logo, company, what it's about, badges, and the payout on the right. */

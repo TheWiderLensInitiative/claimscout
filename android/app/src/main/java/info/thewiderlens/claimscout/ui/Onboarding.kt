@@ -187,9 +187,10 @@ private fun EmailStep(vm: Vm) {
     val accounts by vm.accounts.collectAsState()
     var addingGmail by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
-    Page("Connect your email (optional)",
-        "Many claims need proof: a receipt, an order email, a breach notice. ClaimScout can search your email for it " +
-            "when you ask, read-only, from this phone. Only matching emails go to your PC.",
+    Page("Connect your email",
+        "Settlements often pay by email: virtual cards and “choose your payment” links that expire, and often land in Spam. " +
+            "ClaimScout checks your inbox and Spam every few hours and tells you when money is waiting. It also finds proof " +
+            "(receipts, order emails) when a claim needs it. Read-only, from this phone; only settlement emails go to your PC.",
         footer = {
             Spacer(Modifier.weight(1f))
             Button({ vm.nextFromEmail() }) { Text(if (accounts.isEmpty()) "Skip for now" else "Next") }

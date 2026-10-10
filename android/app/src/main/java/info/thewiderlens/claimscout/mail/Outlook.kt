@@ -86,19 +86,24 @@ object Outlook {
         return access to a.copy(secret = t.str("refresh_token") ?: a.secret)
     }
 
-    suspend fun search(a: MailAccount, query: String, limit: Int): Pair<List<MailMessage>, MailAccount> = withContext(Dispatchers.IO) {
-        val (token, updated) = access(a)
-        val url = "https://graph.microsoft.com/v1.0/me/messages?\$search=" + Uri.encode("\"$query\"") +
-            "&\$top=$limit&\$select=id,subject,from,receivedDateTime,body"
-        val items = get(url, token)["value"]?.jsonArray ?: return@withContext emptyList<MailMessage>() to updated
-        items.map { it.jsonObject }.map { m ->
-            val from = m["from"]?.jsonObject?.get("emailAddress")?.jsonObject
-            MailMessage(account = a.address, id = "outlook:" + m.str("id"),
-                from = listOfNotNull(from?.str("name"), from?.str("address")?.let { "<$it>" }).joinToString(" "),
-                subject = m.str("subject") ?: "", date = m.str("receivedDateTime")?.take(10) ?: "",
-                text = MailText.clean(m["body"]?.jsonObject?.str("content") ?: "").take(MailText.MAX))
-        } to updated
-    }
+    /** Search all mail, plus the Junk folder when withJunk (payout emails often land there). */
+    suspend fun search(a: MailAccount, query: String, limit: Int, withJunk: Boolean = false): Pair<List<MailMessage>, MailAccount> =
+        withContext(Dispatchers.IO) {
+            val (token, updated) = access(a)
+            val places = listOf("me/messages" to "") + if (withJunk) listOf("me/mailFolders/junkemail/messages" to "junk") else emptyList()
+            places.flatMap { (path, folder) ->
+                val url = "https://graph.microsoft.com/v1.0/$path?\$search=" + Uri.encode("\"$query\"") +
+                    "&\$top=$limit&\$select=id,subject,from,receivedDateTime,body,webLink"
+                (get(url, token)["value"]?.jsonArray ?: return@flatMap emptyList()).map { it.jsonObject }.map { m ->
+                    val from = m["from"]?.jsonObject?.get("emailAddress")?.jsonObject
+                    MailMessage(account = a.address, id = "outlook:" + m.str("id"),
+                        from = listOfNotNull(from?.str("name"), from?.str("address")?.let { "<$it>" }).joinToString(" "),
+                        subject = m.str("subject") ?: "", date = m.str("receivedDateTime")?.take(10) ?: "",
+                        text = MailText.clean(m["body"]?.jsonObject?.str("content") ?: "").take(MailText.MAX),
+                        link = m.str("webLink") ?: "", folder = folder)
+                }
+            }.distinctBy { it.id } to updated
+        }
 
     /** KQL for Graph's $search. Phrases can't be quoted inside the outer quotes, so each keyword is grouped. */
     fun query(senders: List<String>, keywords: List<String>, after: String?, before: String?): String {

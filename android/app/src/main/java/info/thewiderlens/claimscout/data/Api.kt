@@ -42,7 +42,7 @@ import javax.net.ssl.X509TrustManager
                                 val label: String? = null, val category: String? = null, val logo: Boolean = false, val amount: Double? = null)
 @Serializable data class Status(val version: String, val open: Int, val likely: Int, val maybe: Int, val claims: Int,
                                 val refreshing: Boolean = false, val profile_set: Boolean = false, val unanswered: Int = 0,
-                                val potential: Int = 0, val potential_unknown: Int = 0)
+                                val potential: Int = 0, val potential_unknown: Int = 0, val money_waiting: Int = 0)
 @Serializable data class QItem(val id: String, val label: String, val title: String, val question: String? = null,
                                val eligibility: String? = null, val states: List<String> = emptyList(),
                                val deadline: String? = null, val award: String? = null, val proof_needed: Int? = null,
@@ -58,7 +58,15 @@ import javax.net.ssl.X509TrustManager
 @Serializable data class NewItem(val id: String, val title: String, val deadline: String? = null, val award: String? = null)
 @Serializable data class NewItems(val new: List<NewItem>, val now: Double)
 @Serializable data class MailMessage(val account: String, val id: String, val from: String, val subject: String,
-                                     val date: String, val text: String)
+                                     val date: String, val text: String, val link: String = "", val folder: String = "")
+@Serializable data class PayoutPlan(val senders: List<String>, val phrases: List<String>, val after: String, val first_run: Boolean = false)
+@Serializable data class Payout(val id: Long, val account: String? = null, val link: String? = null, val sender: String? = null,
+                                val subject: String? = null, val date: String? = null, val folder: String? = null,
+                                val kind: String, val label: String = "", val settlement: String? = null, val amount: String? = null,
+                                val expires: String? = null, val action: String? = null, val status: String = "new",
+                                val needs_action: Boolean = false)
+@Serializable data class Payouts(val payouts: List<Payout> = emptyList(), val new: List<Payout> = emptyList())
+@Serializable data class ScanBody(val messages: List<MailMessage>)
 @Serializable data class ProofRequest(val messages: List<MailMessage>)
 
 class ApiException(msg: String, val code: Int = 0) : IOException(msg)
@@ -151,5 +159,11 @@ class Api(private val pairing: Pairing, private val onGood: suspend (String) -> 
     suspend fun answer(answers: Map<String, String>, used: List<String> = emptyList()) =
         json.decodeFromString<AnswersReply>(call("POST", "/answers", json.encodeToString(AnswersBody(answers, used)))).status
     suspend fun resetAnswers() = call("DELETE", "/answers", "{}")
+    suspend fun payoutPlan(since: Double?) =
+        json.decodeFromString<PayoutPlan>(call("GET", "/payouts/plan" + (since?.let { "?since=$it" } ?: "")))
+    suspend fun payoutScan(msgs: List<MailMessage>) =
+        json.decodeFromString<Payouts>(call("POST", "/payouts/scan", json.encodeToString(ScanBody(msgs)))).new
+    suspend fun payouts() = json.decodeFromString<Payouts>(call("GET", "/payouts")).payouts
+    suspend fun payoutStatus(id: Long, status: String) = call("POST", "/payouts/$id", "{\"status\":\"$status\"}")
     suspend fun newSince(since: Double) = json.decodeFromString<NewItems>(call("GET", "/new?since=$since"))
 }

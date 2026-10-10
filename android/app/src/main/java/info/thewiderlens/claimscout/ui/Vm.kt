@@ -14,6 +14,7 @@ import info.thewiderlens.claimscout.data.Claim
 import info.thewiderlens.claimscout.data.Detail
 import info.thewiderlens.claimscout.data.MailAccount
 import info.thewiderlens.claimscout.data.Pairing
+import info.thewiderlens.claimscout.data.Payout
 import info.thewiderlens.claimscout.data.Profile
 import info.thewiderlens.claimscout.data.QItem
 import info.thewiderlens.claimscout.data.Questionnaire
@@ -23,6 +24,7 @@ import info.thewiderlens.claimscout.data.parsePairLink
 import info.thewiderlens.claimscout.mail.Gmail
 import info.thewiderlens.claimscout.mail.MailSearch
 import info.thewiderlens.claimscout.mail.Outlook
+import info.thewiderlens.claimscout.mail.PayoutWatch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -55,6 +57,10 @@ class Vm(app: Application) : AndroidViewModel(app) {
     var proofNote by mutableStateOf<String?>(null)
     var findingProof by mutableStateOf(false)
     var profile by mutableStateOf<Profile?>(null)
+    var payouts by mutableStateOf<List<Payout>>(emptyList())
+    var payoutNote by mutableStateOf<String?>(null)
+    var checkingPayouts by mutableStateOf(false)
+    val payoutCheck = store.payoutCheckFlow.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     // questionnaire
     var quizActive by mutableStateOf(false)
@@ -115,6 +121,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
     fun reload() = launch {
         val a = api()
         status = a.status()
+        if (tab == Tab.Claims || tab == Tab.Matches) payouts = a.payouts()
         rows = when (tab) {
             Tab.Settings -> rows
             Tab.Browse -> a.settlements(if (noProofOnly) "noproof" else "all", query, category)
@@ -187,6 +194,33 @@ class Vm(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeAccount(a: MailAccount) = launch { store.removeAccount(a) }
+
+    // --- payout watcher ----------------------------------------------------------------------------------------
+
+    /** Search the inboxes (Spam too) for payout emails now, instead of waiting for the next background check. */
+    fun checkPayouts() {
+        if (accounts.value.isEmpty()) { payoutNote = "Connect Gmail or Outlook in Settings first."; return }
+        checkingPayouts = true
+        launch {
+            try {
+                val r = PayoutWatch(store, api()).run()
+                val waiting = r.new.count { it.needs_action }
+                payoutNote = (listOf(when {
+                    waiting > 0 -> "Found $waiting payment${if (waiting == 1) "" else "s"} waiting for you."
+                    r.new.isNotEmpty() -> "Found ${r.new.size} settlement email${if (r.new.size == 1) "" else "s"}, nothing to act on."
+                    else -> "Checked ${r.searched} settlement email${if (r.searched == 1) "" else "s"}; nothing new."
+                }) + r.errors).joinToString("\n")
+                payouts = api().payouts()
+                status = api().status()
+            } finally { checkingPayouts = false }
+        }
+    }
+
+    fun setPayoutStatus(p: Payout, s: String) = launch {
+        api().payoutStatus(p.id, s)
+        payouts = api().payouts()
+        status = api().status()
+    }
 
     // --- questionnaire ---------------------------------------------------------------------------------------
 

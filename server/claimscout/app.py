@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
-from . import ai, logos, matcher, pairing, proof, questions
+from . import ai, logos, matcher, pairing, payouts, proof, questions
 from .text import max_amount
 from .collectors import community, topclassactions
 from .db import DB
@@ -127,7 +127,9 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
                 "claims": db.q("SELECT COUNT(*) n FROM claims")[0]["n"], "refreshing": hub.lock.locked(),
                 "last_refresh": db.get("last_refresh"), "ai": ai.public_settings(db),
                 "profile_set": bool(matcher.profile(db)["companies"] or matcher.profile(db)["states"]),
-                "unanswered": questions.build(db, matcher.profile(db))["count"]}
+                "unanswered": questions.build(db, matcher.profile(db))["count"],
+                "money_waiting": db.q("""SELECT COUNT(*) n FROM payouts WHERE status='new' AND kind IN
+                    ('virtual_card','payment_choice','deficiency','digital_payment','check')""")[0]["n"]}
 
     @app.get("/api/profile", dependencies=[api])
     def get_profile():
@@ -327,6 +329,27 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
     def claims():
         return {"claims": db.q("""SELECT c.*, s.title, s.deadline, s.award FROM claims c
                                   JOIN settlements s ON s.id=c.settlement_id ORDER BY c.updated_at DESC""")}
+
+    @app.get("/api/payouts/plan", dependencies=[api])
+    def payout_plan(since: float | None = None):
+        """What the phone's payout watcher searches for. `since` = its last successful check (none = first run)."""
+        return payouts.watch_plan(db, since)
+
+    @app.post("/api/payouts/scan", dependencies=[api])
+    async def payout_scan(body: dict = Body(...)):
+        """Emails the watcher found. Returns the new payouts (the phone notifies about the ones needing action)."""
+        return {"new": await payouts.scan(db, body.get("messages") or [])}
+
+    @app.get("/api/payouts", dependencies=[api])
+    def payout_list(all: bool = False):
+        return {"payouts": payouts.listing(db, include_done=all)}
+
+    @app.post("/api/payouts/{pid}", dependencies=[api])
+    def payout_status(pid: int, body: dict = Body(...)):
+        if body.get("status") not in ("new", "done", "dismissed"):
+            raise HTTPException(400, "status is new, done or dismissed")
+        db.x("UPDATE payouts SET status=? WHERE id=?", (body["status"], pid))
+        return {"ok": True}
 
     @app.get("/api/new", dependencies=[api])
     def new(since: float = 0):

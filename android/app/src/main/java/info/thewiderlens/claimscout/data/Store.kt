@@ -36,6 +36,12 @@ class Store(private val ctx: Context) {
     private val notifiedKey = stringPreferencesKey("notified")
     private val msClientKey = stringPreferencesKey("ms_client_id")
     private val onboardedKey = stringPreferencesKey("onboarded")
+    private val payoutCheckKey = stringPreferencesKey("payout_check")
+
+    /** When the payout watcher last finished a check (epoch seconds), or null before the first one. */
+    val payoutCheckFlow = ctx.dataStore.data.map { it[payoutCheckKey]?.toDoubleOrNull() }
+    suspend fun payoutCheck(): Double? = payoutCheckFlow.first()
+    suspend fun setPayoutCheck(t: Double) = ctx.dataStore.edit { it[payoutCheckKey] = t.toString() }
 
     /** Set once the first-run questionnaire is finished (or skipped) on this phone. */
     val onboardedFlow = ctx.dataStore.data.map { it[onboardedKey] == "1" }

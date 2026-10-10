@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS proofs (
     created_at REAL,
     UNIQUE (settlement_id, account, message_id)
 );
+CREATE TABLE IF NOT EXISTS payouts (
+    id INTEGER PRIMARY KEY,
+    account TEXT, message_id TEXT, link TEXT,       -- link reopens the email (Gmail search / Outlook web link)
+    sender TEXT, subject TEXT, date TEXT, folder TEXT,
+    kind TEXT,                    -- virtual_card | payment_choice | digital_payment | check | deficiency | denied | claim_update
+    settlement TEXT, amount TEXT, expires TEXT, action TEXT,
+    status TEXT,                  -- new | done | dismissed
+    created_at REAL,
+    UNIQUE (account, message_id)
+);
 CREATE TABLE IF NOT EXISTS answers (
     settlement_id TEXT PRIMARY KEY,
     answer TEXT,                  -- yes | no | unsure | unused (didn't pick the company at all)

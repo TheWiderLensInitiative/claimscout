@@ -3,6 +3,7 @@ package info.thewiderlens.claimscout.mail
 import com.sun.mail.iap.Argument
 import com.sun.mail.imap.IMAPFolder
 import com.sun.mail.imap.protocol.IMAPResponse
+import android.net.Uri
 import info.thewiderlens.claimscout.data.MailAccount
 import info.thewiderlens.claimscout.data.MailMessage
 import kotlinx.coroutines.Dispatchers
@@ -42,15 +43,25 @@ object Gmail {
         }
     }
 
-    /** "[Gmail]/All Mail" has a different name in other languages; find it by its \All flag. */
-    private fun allMail(store: Store): Folder =
-        store.defaultFolder.list("*").firstOrNull { (it as? IMAPFolder)?.attributes?.contains("\\All") == true }
-            ?: store.getFolder("INBOX")
+    /** "[Gmail]/All Mail" and "[Gmail]/Spam" have other names in other languages; find them by their flags. */
+    private fun special(store: Store, flag: String): Folder? =
+        store.defaultFolder.list("*").firstOrNull { (it as? IMAPFolder)?.attributes?.contains(flag) == true }
 
-    suspend fun search(account: MailAccount, query: String, limit: Int): List<MailMessage> = withContext(Dispatchers.IO) {
-        val store = connect(account.address, account.secret)
-        try {
-            val folder = allMail(store) as IMAPFolder
+    /** Search All Mail (and Spam when withSpam: Gmail's IMAP search never looks in Spam from All Mail). */
+    suspend fun search(account: MailAccount, query: String, limit: Int, withSpam: Boolean = false): List<MailMessage> =
+        withContext(Dispatchers.IO) {
+            val store = connect(account.address, account.secret)
+            try {
+                val folders = listOfNotNull(special(store, "\\All") ?: store.getFolder("INBOX"),
+                    if (withSpam) special(store, "\\Junk") else null)
+                folders.flatMap { searchFolder(account, it as IMAPFolder, query, limit, isSpam = it != folders.first()) }
+            } finally {
+                store.close()
+            }
+        }
+
+    private fun searchFolder(account: MailAccount, folder: IMAPFolder, query: String, limit: Int, isSpam: Boolean): List<MailMessage> {
+        run {
             folder.open(Folder.READ_ONLY)
             @Suppress("UNCHECKED_CAST")
             val nums = folder.doCommand { p ->
@@ -64,16 +75,18 @@ object Gmail {
                 out
             } as List<Int>
             val msgs = folder.getMessages(nums.sorted().takeLast(limit).reversed().toIntArray())
-            folder.fetch(msgs, FetchProfile().apply { add(FetchProfile.Item.ENVELOPE) })
+            folder.fetch(msgs, FetchProfile().apply { add(FetchProfile.Item.ENVELOPE); add("Message-ID") })
             val day = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            msgs.map { m ->
-                MailMessage(account = account.address, id = "gmail:" + folder.getUID(m),
+            return msgs.map { m ->
+                val msgId = m.getHeader("Message-ID")?.firstOrNull()?.trim()?.trim('<', '>')
+                MailMessage(account = account.address, id = "gmail:" + (msgId ?: (if (isSpam) "spam:" else "") + folder.getUID(m)),
                     from = m.from?.firstOrNull()?.toString() ?: "", subject = m.subject ?: "",
                     date = (m.receivedDate ?: m.sentDate)?.let { day.format(it) } ?: "",
-                    text = MailText.of(m))
+                    text = MailText.of(m), folder = if (isSpam) "spam" else "",
+                    // opens this exact email in Gmail (browser or app), wherever it is, Spam included
+                    link = msgId?.let { "https://mail.google.com/mail/u/?authuser=${Uri.encode(account.address)}#search/" +
+                        Uri.encode("in:anywhere rfc822msgid:$it") } ?: "")
             }.also { folder.close(false) }
-        } finally {
-            store.close()
         }
     }
 

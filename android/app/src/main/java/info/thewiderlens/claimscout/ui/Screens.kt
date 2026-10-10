@@ -200,6 +200,16 @@ fun SettingsScreen(vm: Vm) {
         }
         OutlookSetup(vm, ctx)
         if (addingGmail) GmailDialog(vm) { addingGmail = false }
+        val lastCheck by vm.payoutCheck.collectAsState()
+        Text("Payout watcher: checks these inboxes, Spam included, every 4 hours for settlement payments " +
+            "(virtual cards, payment links, checks) and notifies you before they expire." +
+            (lastCheck?.let { " Last check: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                .format(java.util.Date((it * 1000).toLong())) + "." } ?: ""),
+            style = MaterialTheme.typography.bodySmall)
+        if (accounts.isNotEmpty()) OutlinedButton({ vm.checkPayouts() }, enabled = !vm.checkingPayouts) {
+            Text(if (vm.checkingPayouts) "Checking…" else "Check for payments now")
+        }
+        vm.payoutNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider()
         Text("Your profile", style = MaterialTheme.typography.titleMedium)

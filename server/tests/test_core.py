@@ -220,3 +220,40 @@ def test_logo_endpoint(db, tmp_path, monkeypatch):
     assert c.get("/api/settlements?view=all", headers=h).json()["settlements"][0]["logo"] is True
     db.x("UPDATE settlements SET logo=? WHERE id=?", ("../" * 30 + "etc/passwd", s["id"]))   # never serve outside the folder
     assert c.get(f"/api/logo/{s['id']}", headers=h).status_code == 404
+
+
+def test_payout_classify():
+    from claimscout.payouts import classify
+    f = classify({"subject": "Equinox Data Breach Settlement - Your Virtual Prepaid Card", "date": "2026-03-01",
+                  "text": "Your $104.12 virtual prepaid Mastercard is ready. This card expires on September 1, 2026."})
+    assert f["kind"] == "virtual_card" and f["amount"] == "$104.12" and f["expires"] == "2026-09-01"
+    assert f["settlement"].startswith("Equinox")
+    f = classify({"subject": "Action required: select your payment method", "date": "2026-01-10",
+                  "text": "To receive your payment from the Acme Settlement, choose PayPal, Venmo or a virtual card. "
+                          "This link will expire within 90 days."})
+    assert f["kind"] == "payment_choice" and f["expires"] == "2026-04-10" and f["settlement"] == "Acme"
+    f = classify({"subject": "Notice of deficiency - Lands End Settlement", "date": "2026-10-02",
+                  "text": "Your claim is missing information. Please respond by November 1, 2026."})
+    assert f["kind"] == "deficiency" and f["expires"] == "2026-11-01"
+    assert classify({"subject": "Notice of deficiency", "text": "Your claim is missing information"})["kind"] == "deficiency"
+    assert classify({"subject": "Lunch?", "text": "hi"})["kind"] == "other"
+
+
+def test_payout_flow(db):
+    c = TestClient(create_app(db))
+    h = {"Authorization": "Bearer " + pairing.token(db)}
+    [s] = topclassactions.parse_feed(FEED)
+    db.upsert_settlement(s)
+    plan = c.get("/api/payouts/plan", headers=h).json()
+    assert plan["first_run"] and "epiqglobal.com" in plan["senders"] and "acmesettlement.example" in plan["senders"]
+    msg = {"account": "me@gmail.com", "id": "gmail:spam:1", "from": "noreply@digitaldisbursements.com", "folder": "spam",
+           "subject": "Acme Settlement: your virtual card", "date": "2026-02-01", "link": "https://mail.google.com/x",
+           "text": "Your $25 virtual card expires 08/01/2026."}
+    new = c.post("/api/payouts/scan", json={"messages": [msg, {**msg, "id": "2", "subject": "hi", "text": "hello"}]}, headers=h).json()["new"]
+    assert len(new) == 1 and new[0]["needs_action"] and new[0]["folder"] == "spam"
+    assert c.post("/api/payouts/scan", json={"messages": [msg]}, headers=h).json()["new"] == []   # seen before: no repeat alert
+    assert c.get("/api/status", headers=h).json()["money_waiting"] == 1
+    pid = c.get("/api/payouts", headers=h).json()["payouts"][0]["id"]
+    c.post(f"/api/payouts/{pid}", json={"status": "done"}, headers=h)
+    assert c.get("/api/payouts", headers=h).json()["payouts"] == []
+    assert not c.get("/api/payouts/plan?since=1", headers=h).json()["first_run"]

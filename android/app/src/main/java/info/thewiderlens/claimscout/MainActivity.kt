@@ -45,5 +45,6 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent?.data?.takeIf { it.scheme == "claimscout" }?.let { vm.pair(it.toString()) }
         intent?.getStringExtra("settlement")?.let { vm.open(it) }
+        if (intent?.getStringExtra("tab") == "claims") vm.select(info.thewiderlens.claimscout.ui.Tab.Claims)
     }
 }
