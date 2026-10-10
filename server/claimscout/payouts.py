@@ -59,8 +59,18 @@ def watch_plan(db, since: float | None) -> dict:
             "first_run": first}
 
 
+def _from_administrator(sender: str) -> bool:
+    host = (re.search(r"@([\w.-]+)", sender or "") or [None, ""])[1].lower()
+    return any(host == d or host.endswith("." + d) for d in ADMINISTRATORS if d not in ("paypal.com", "e.paypal.com", "venmo.com"))
+
+
 def classify(m: dict) -> dict:
     blob = f"{m.get('subject', '')}\n{m.get('text', '')}"
+    # A store promo ("win a $200 Virtual Visa Prepaid Card!") is not a payout: it must be about a settlement or
+    # claim, or come from a settlement administrator.
+    if not (_from_administrator(m.get("from", "")) or
+            re.search(r"settlement|class action|claim (id|number|#)|your claim|claimant|administrator", blob, re.I)):
+        return {"kind": "other", "amount": None, "expires": None, "settlement": None}
     # the subject says what the email is for; the body often lists every payment option
     kind = next((k for hay in (m.get("subject", ""), blob) for k, pat in KINDS.items()
                  if re.search(pat, hay, re.I | re.S)), "other")

@@ -237,6 +237,12 @@ def test_payout_classify():
     assert f["kind"] == "deficiency" and f["expires"] == "2026-11-01"
     assert classify({"subject": "Notice of deficiency", "text": "Your claim is missing information"})["kind"] == "deficiency"
     assert classify({"subject": "Lunch?", "text": "hi"})["kind"] == "other"
+    # a store promo found in the user's real inbox must not raise a "money waiting" alert
+    assert classify({"from": "email@seller.etsy.com", "subject": "We'd love to hear from you",
+                     "text": "A chance to win a $200 Virtual Visa Prepaid Card!"})["kind"] == "other"
+    # the same words from an administrator are a payout
+    assert classify({"from": "noreply@digitaldisbursements.com", "subject": "Your virtual prepaid card",
+                     "text": "Your $200 Virtual Visa Prepaid Card is ready."})["kind"] == "virtual_card"
 
 
 def test_payout_flow(db):
