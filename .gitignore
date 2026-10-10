@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv*/
+.pytest_cache/
+*.db
+*.db-*
+*.pem
+*.apk
+android/.gradle/
+android/.kotlin/
+android/**/build/
+android/local.properties
+android/.idea/
+android/keystore.properties
+*.jks

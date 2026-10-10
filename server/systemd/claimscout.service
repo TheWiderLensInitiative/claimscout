@@ -1,0 +1,12 @@
+# systemd user service: cp to ~/.config/systemd/user/ then `systemctl --user enable --now claimscout`
+[Unit]
+Description=ClaimScout (class action settlement finder)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/claimscout/server
+ExecStart=%h/claimscout/server/.venv/bin/python -m claimscout serve
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

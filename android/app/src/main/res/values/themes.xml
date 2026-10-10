@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ClaimScout" parent="android:Theme.Material.NoActionBar" />
+    <color name="brand">#1F6F4A</color>
+    <color name="brand_light">#F7F7F4</color>
+</resources>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimScout</title>
+<style>
+:root { --bg:#f7f7f4; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e2dc; --accent:#1f6f4a; --warn:#a55b00; --bad:#a3312b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141513; --card:#1d1e1b; --ink:#ecebe6; --muted:#9a9a93; --line:#30312d; --accent:#5fc18f; --warn:#e3a14a; --bad:#ef7d74; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif }
+header { display:flex; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap }
+header h1 { font-size:18px; margin:0 } nav { display:flex; gap:4px; flex-wrap:wrap }
+nav button { background:none; border:0; color:var(--muted); padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit }
+nav button.on { background:var(--card); color:var(--ink); box-shadow:0 0 0 1px var(--line) }
+main { max-width:960px; margin:0 auto; padding:20px 16px }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px }
+.row { display:flex; gap:10px; align-items:baseline; justify-content:space-between; flex-wrap:wrap }
+.muted { color:var(--muted) } .small { font-size:13px }
+.tag { font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); white-space:nowrap }
+.likely { color:var(--accent); border-color:var(--accent) } .maybe { color:var(--warn); border-color:var(--warn) } .unlikely { color:var(--muted) }
+a { color:var(--accent) } label { display:block; font-weight:600; margin:12px 0 4px }
+input, textarea, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit }
+textarea { min-height:90px } .btn { background:var(--accent); color:var(--bg); border:0; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; margin-top:12px }
+.btn.ghost { background:none; color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent) }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:12px }
+.stats div b { display:block; font-size:24px } #qr svg { width:240px; height:240px; background:#fff; padding:8px; border-radius:8px }
+.hidden { display:none } .note { border-left:3px solid var(--warn); padding:4px 10px; margin:10px 0 }
+</style>
+</head>
+<body>
+<header><h1>ClaimScout</h1>
+<nav id="nav"><button data-v="matches" class="on">Matches</button><button data-v="all">All open</button><button data-v="claimed">My claims</button><button data-v="profile">Profile</button><button data-v="settings">AI &amp; sources</button><button data-v="phone">Phone</button></nav></header>
+<main>
+<div class="stats" id="stats"></div>
+<section id="list"></section>
+<section id="profile" class="hidden"><div class="card">
+  <p class="muted small">Used only on this PC to guess which settlements fit you. Nothing here is sent anywhere unless you turn on OpenRouter below.</p>
+  <label>Companies, brands, products and services you've used (one per line)</label><textarea id="companies" placeholder="Apple&#10;T-Mobile&#10;CVS&#10;Wells Fargo"></textarea>
+  <label>State you live in now (two letters)</label><input id="states" placeholder="CA">
+  <label>States you lived in before (comma separated)</label><input id="past_states" placeholder="NY, IL">
+  <label>Anything else that might matter</label><textarea id="about" placeholder="Bought an iPhone 16 in 2024. Got a data breach letter from my hospital. Drove a 2019 Toyota."></textarea>
+  <button class="btn" id="saveProfile">Save and re-check</button></div></section>
+<section id="settings" class="hidden"><div class="card">
+  <label>AI</label><select id="provider"></select>
+  <div id="cloudNote" class="note small hidden">With OpenRouter, settlement text and the email excerpts your phone finds are sent to OpenRouter and the model's provider. Free models may log prompts. Use a model on this PC to keep everything local.</div>
+  <label>Server address</label><input id="base_url">
+  <label>Model</label><input id="model" list="models" placeholder="e.g. a :free model on OpenRouter, or blank for the local server's default"><datalist id="models"></datalist>
+  <label>API key (OpenRouter)</label><input id="api_key" type="password" placeholder="sk-or-...">
+  <button class="btn" id="saveAi">Save</button> <button class="btn ghost" id="testAi">Test</button> <button class="btn ghost" id="freeModels">List free OpenRouter models</button>
+  <p id="aiResult" class="small"></p></div>
+  <div class="card"><label>Community settlement lists (JSON URLs, one per line)</label><textarea id="feeds" placeholder="https://raw.githubusercontent.com/…/settlements.json"></textarea>
+  <button class="btn" id="saveFeeds">Save</button> <button class="btn ghost" id="refresh">Check for new settlements now</button></div></section>
+<section id="phone" class="hidden"><div class="card">
+  <p>Install the ClaimScout app on your phone, then scan this code with the phone's camera (or tap “Pair” in the app and paste the link).</p>
+  <div id="qr"></div><p class="small muted" id="pairInfo"></p>
+  <p class="small">Away from home? Install Tailscale on the PC and phone; its address is included automatically.</p></div></section>
+</main>
+<script>
+const T = new URLSearchParams(location.hash.slice(1)).get('t') || localStorage.getItem('cs_t') || '';
+if (T) { try { localStorage.setItem('cs_t', T) } catch (e) {} ; history.replaceState(null, '', '/') }
+const api = (p, o = {}) => fetch('/api' + p, { ...o, headers: { Authorization: 'Bearer ' + T, 'Content-Type': 'application/json' } })
+  .then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t) }));
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+let view = 'matches';
+
+async function stats() {
+  const s = await api('/status');
+  const last = s.last_refresh ? new Date(s.last_refresh.at * 1000).toLocaleString() : 'never';
+  $('stats').innerHTML = `<div class=card><b>${s.likely}</b>likely for you</div><div class=card><b>${s.maybe}</b>maybe</div>
+    <div class=card><b>${s.open}</b>open settlements</div><div class=card><b>${s.claims}</b>claims tracked</div>
+    <div class="card small muted">Last check: ${esc(last)}${s.refreshing ? '<br>Checking now…' : ''}<br>AI: ${esc(s.ai.provider)}</div>`;
+  if (!s.profile_set && view === 'matches') $('list').insertAdjacentHTML('afterbegin', `<div class="card note">Fill in your <a href="#" onclick="show('profile');return false">profile</a> so ClaimScout can find settlements that fit you.</div>`);
+}
+
+async function list(v) {
+  const r = await api('/settlements?view=' + (v === 'all' ? 'all' : v));
+  $('list').innerHTML = r.settlements.map(s => `<div class=card><div class=row><b>${esc(s.title)}</b>
+    ${s.verdict ? `<span class="tag ${esc(s.verdict)}">${esc(s.verdict)}</span>` : ''}</div>
+    <div class="small muted">${s.deadline ? 'Claim by ' + esc(s.deadline) : 'No deadline listed'} · ${esc(s.award || 'Award TBD')} ·
+    ${s.proof_needed === 0 ? 'no proof needed' : s.proof_needed ? 'proof needed' : 'proof unknown'}${s.states.length ? ' · ' + esc(s.states.join(', ')) + ' only' : ''}
+    ${s.claim_status ? ' · claim ' + esc(s.claim_status) : ''}${s.proofs ? ' · ' + s.proofs + ' proof found' : ''}</div>
+    ${s.reason ? `<div class=small>${esc(s.reason)}</div>` : ''}
+    <div class=small><a href="#" onclick="detail('${esc(s.id)}', this);return false">Details</a></div><div class=detail></div></div>`).join('')
+    || '<div class="card muted">Nothing here yet.</div>';
+  stats();
+}
+
+async function detail(id, a) {
+  const box = a.parentElement.nextElementSibling;
+  if (box.innerHTML) { box.innerHTML = ''; return }
+  const s = await api('/settlements/' + encodeURIComponent(id));
+  box.innerHTML = `<p><b>Who's eligible:</b> ${esc(s.eligibility)}</p><p><b>Proof:</b> ${esc(s.proof || 'not stated')}</p>
+    ${s.case_name ? `<p class="small muted">${esc(s.case_name)}</p>` : ''}
+    <p>${s.claim_url ? `<a href="${esc(s.claim_url)}" target=_blank rel=noopener>Official claim form</a> · ` : ''}
+    ${s.website ? `<a href="${esc(s.website)}" target=_blank rel=noopener>Settlement website</a> · ` : ''}<a href="${esc(s.url)}" target=_blank rel=noopener>Source</a></p>
+    ${s.proofs.length ? '<p><b>Proof from your email:</b></p><ul>' + s.proofs.map(p => `<li>${esc(p.date)} — ${esc(p.summary || p.subject)} ${p.order_number ? '· #' + esc(p.order_number) : ''} ${p.amount ? '· ' + esc(p.amount) : ''}</li>`).join('') + '</ul>' : ''}
+    <p class="small muted">Only file if you qualify: claims are made under penalty of perjury.</p>`;
+}
+
+async function loadProfile() {
+  const p = await api('/profile');
+  $('companies').value = p.companies.join('\n'); $('states').value = p.states.join(', ');
+  $('past_states').value = p.past_states.join(', '); $('about').value = p.about;
+}
+$('saveProfile').onclick = async () => {
+  const split = s => s.split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  await api('/profile', { method: 'PUT', body: JSON.stringify({ companies: split($('companies').value), states: split($('states').value),
+    past_states: split($('past_states').value), about: $('about').value }) });
+  show('matches');
+};
+
+async function loadAi() {
+  const a = await api('/ai');
+  $('provider').innerHTML = Object.entries(a.presets).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join('');
+  $('provider').value = a.provider; $('base_url').value = a.base_url; $('model').value = a.model; $('api_key').value = a.api_key;
+  $('cloudNote').classList.toggle('hidden', a.provider !== 'openrouter');
+  $('provider').onchange = () => { $('base_url').value = a.presets[$('provider').value].base_url; $('cloudNote').classList.toggle('hidden', $('provider').value !== 'openrouter') };
+  $('feeds').value = (await api('/feeds')).feeds.join('\n');
+}
+$('saveAi').onclick = async () => { await api('/ai', { method: 'PUT', body: JSON.stringify({ provider: $('provider').value, base_url: $('base_url').value, model: $('model').value, api_key: $('api_key').value }) }); $('aiResult').textContent = 'Saved.' };
+$('testAi').onclick = async () => { $('aiResult').textContent = 'Asking the model…'; const r = await api('/ai/test', { method: 'POST', body: '{}' }); $('aiResult').textContent = r.ok ? 'Works: ' + r.reply : 'Problem: ' + r.error };
+$('freeModels').onclick = async () => { const r = await api('/ai/openrouter-free'); $('models').innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join(''); $('aiResult').textContent = r.models.length + ' free models: click the Model box to pick one.' };
+$('saveFeeds').onclick = async () => { await api('/feeds', { method: 'PUT', body: JSON.stringify({ feeds: $('feeds').value.split('\n').map(s => s.trim()).filter(Boolean) }) }); $('aiResult').textContent = '' };
+$('refresh').onclick = async () => { await api('/refresh', { method: 'POST', body: '{}' }); show('matches') };
+
+async function loadPhone() {
+  const p = await api('/pair');
+  $('qr').innerHTML = p.qr;
+  $('pairInfo').innerHTML = `Addresses: ${esc(p.addresses.join(', '))}<br>Certificate fingerprint (the app checks this):<br><code>${esc(p.fingerprint)}</code><br><a href="#" onclick="navigator.clipboard.writeText('${esc(p.link)}');return false">Copy pairing link</a>`;
+}
+
+function show(v) {
+  view = v;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  const page = ['profile', 'settings', 'phone'].includes(v) ? v : 'list';
+  ['list', 'profile', 'settings', 'phone'].forEach(id => $(id).classList.toggle('hidden', id !== page));
+  $('stats').classList.toggle('hidden', page !== 'list');
+  ({ profile: loadProfile, settings: loadAi, phone: loadPhone }[v] || (() => list(v)))().catch(e => $('list').innerHTML = `<div class="card note">${esc(e.message)}</div>`);
+}
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => show(b.dataset.v));
+if (!T) $('list').innerHTML = '<div class="card note">Open the dashboard with <code>claimscout open</code> so it has your access key.</div>'; else show('matches');
+</script>
+</body>
+</html>
