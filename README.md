@@ -1,3 +1,5 @@
+<p align="center"><img src="brand/logo.svg" alt="ClaimScout" width="360"></p>
+
 # ClaimScout
 
 Find class action settlements you may qualify for, find the proof in your own email, and keep track of your
@@ -96,6 +98,13 @@ OpenRouter for AI.
 
 ClaimScout isn't a law firm or a settlement administrator. Listings come from public sources and can be wrong
 or out of date, so always read the official notice. Only file claims you qualify for.
+
+## Brand
+
+`brand/source/logo-original.png` is the original artwork. `brand/make_brand.py` traces it into the SVG logos
+(`logo`, `logo-dark`, `mark`, `mark-dark`, `mark-mono`, `icon`), the Android launcher, themed, notification and
+in-app drawables, and the dashboard mark. Colors: blue `#0081FE`, ink `#191A1C`. Buttons use `#0066CC` (light) and
+`#4DA3FF` (dark) so their text meets WCAG AA.
 
 ## Development
 

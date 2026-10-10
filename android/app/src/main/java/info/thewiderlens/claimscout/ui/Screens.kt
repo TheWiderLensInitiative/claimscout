@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -55,10 +57,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import info.thewiderlens.claimscout.R
 import info.thewiderlens.claimscout.data.Claim
 import info.thewiderlens.claimscout.data.Detail
 import info.thewiderlens.claimscout.data.Profile
@@ -91,7 +95,8 @@ fun PairScreen(vm: Vm) {
     var link by remember { mutableStateOf("") }
     Scaffold { pad ->
         Column(Modifier.padding(pad).padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ClaimScout", style = MaterialTheme.typography.headlineMedium)
+            Image(painterResource(R.drawable.brand_logo), "ClaimScout",
+                Modifier.fillMaxWidth().padding(vertical = 16.dp).height(200.dp))
             Text("Finds class action settlements you may qualify for. It runs on your own PC, free, with no subscription.")
             Text("1. On your PC, run ClaimScout and open the dashboard (claimscout open).\n" +
                 "2. Go to the Phone tab.\n3. Scan the QR code with this phone's camera, or copy the pairing link and paste it here.")
@@ -107,7 +112,11 @@ fun PairScreen(vm: Vm) {
 @Composable
 fun MainScreen(vm: Vm) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text(vm.tab.label) }) },
+        topBar = {
+            TopAppBar(title = { Text(vm.tab.label) }, navigationIcon = {
+                Image(painterResource(R.drawable.brand_mark), "ClaimScout", Modifier.padding(start = 12.dp, end = 4.dp).size(36.dp))
+            })
+        },
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->

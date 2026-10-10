@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ClaimScout" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/brand_night_bg</item>
+    </style>
+    <color name="brand_outline">#F2F3F5</color>
+    <color name="brand_night_bg">#121314</color>
+</resources>

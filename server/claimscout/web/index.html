@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
 <title>ClaimScout</title>
 <style>
-:root { --bg:#f7f7f4; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e2dc; --accent:#1f6f4a; --warn:#a55b00; --bad:#a3312b; }
-@media (prefers-color-scheme: dark) { :root { --bg:#141513; --card:#1d1e1b; --ink:#ecebe6; --muted:#9a9a93; --line:#30312d; --accent:#5fc18f; --warn:#e3a14a; --bad:#ef7d74; } }
+:root { --bg:#f5f7fa; --card:#fff; --ink:#191a1c; --muted:#5f6670; --line:#e1e5eb; --accent:#0066cc; --brand:#0081fe; --on-accent:#fff; --warn:#a55b00; --bad:#a3312b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#121314; --card:#1c1d20; --ink:#f2f3f5; --muted:#9aa1ab; --line:#2c2f34; --accent:#4da3ff; --brand:#0081fe; --on-accent:#0b1a2b; --warn:#e3a14a; --bad:#ef7d74; } }
 * { box-sizing:border-box }
 body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif }
 header { display:flex; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap }
-header h1 { font-size:18px; margin:0 } nav { display:flex; gap:4px; flex-wrap:wrap }
+header h1 { font-size:20px; margin:0; display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.01em }
+header h1 img { width:44px; height:auto } header h1 b { color:var(--brand) } nav { display:flex; gap:4px; flex-wrap:wrap }
 nav button { background:none; border:0; color:var(--muted); padding:6px 10px; border-radius:6px; cursor:pointer; font:inherit }
 nav button.on { background:var(--card); color:var(--ink); box-shadow:0 0 0 1px var(--line) }
 main { max-width:960px; margin:0 auto; padding:20px 16px }
@@ -21,7 +23,7 @@ main { max-width:960px; margin:0 auto; padding:20px 16px }
 .likely { color:var(--accent); border-color:var(--accent) } .maybe { color:var(--warn); border-color:var(--warn) } .unlikely { color:var(--muted) }
 a { color:var(--accent) } label { display:block; font-weight:600; margin:12px 0 4px }
 input, textarea, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit }
-textarea { min-height:90px } .btn { background:var(--accent); color:var(--bg); border:0; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; margin-top:12px }
+textarea { min-height:90px } .btn { background:var(--accent); color:var(--on-accent); border:0; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; margin-top:12px }
 .btn.ghost { background:none; color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent) }
 .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:12px }
 .stats div b { display:block; font-size:24px } #qr svg { width:240px; height:240px; background:#fff; padding:8px; border-radius:8px }
@@ -29,7 +31,7 @@ textarea { min-height:90px } .btn { background:var(--accent); color:var(--bg); b
 </style>
 </head>
 <body>
-<header><h1>ClaimScout</h1>
+<header><h1><img src="/mark.svg" alt=""><span>Claim<b>Scout</b></span></h1>
 <nav id="nav"><button data-v="matches" class="on">Matches</button><button data-v="all">All open</button><button data-v="claimed">My claims</button><button data-v="profile">Profile</button><button data-v="settings">AI &amp; sources</button><button data-v="phone">Phone</button></nav></header>
 <main>
 <div class="stats" id="stats"></div>

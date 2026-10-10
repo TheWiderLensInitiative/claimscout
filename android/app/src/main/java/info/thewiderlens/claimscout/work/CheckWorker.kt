@@ -36,7 +36,7 @@ class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                     Intent(applicationContext, MainActivity::class.java).putExtra("settlement", s.id),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
                 nm.notify(s.id.hashCode(), NotificationCompat.Builder(applicationContext, CHANNEL)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setSmallIcon(R.drawable.ic_notification).setColor(0xFF0081FE.toInt())
                     .setContentTitle("You may qualify: ${s.title}")
                     .setContentText(listOfNotNull(s.award, s.deadline?.let { "claim by $it" }).joinToString(" · "))
                     .setContentIntent(open).setAutoCancel(true).build())

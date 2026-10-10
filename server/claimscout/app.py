@@ -90,6 +90,10 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         def index():
             return FileResponse(WEB / "index.html")
 
+        @app.get("/mark.svg")
+        def mark():
+            return FileResponse(WEB / "mark.svg", media_type="image/svg+xml")
+
         @app.get("/api/pair", dependencies=[api])
         def pair(request: Request):
             if not _loopback(request):
