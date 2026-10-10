@@ -75,3 +75,19 @@ def states_in(text: str):
             if code not in found:
                 found.append(code)
     return found
+
+
+def max_amount(award: str | None) -> float | None:
+    """The most one person could get: 'Up to $5,000' -> 5000, 'Estimated $25 to $95' -> 95, '$1.2K' -> 1200.
+    Settlement totals ('$20M fund') are ignored; None when no per-person dollar figure is given."""
+    best = None
+    for num, unit in re.findall(r"\$\s?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|m|million|b|billion)?\b", award or "", re.I):
+        v = float(num.replace(",", ""))
+        unit = (unit or "").lower()
+        if unit in ("m", "million", "b", "billion"):
+            continue
+        if unit in ("k", "thousand"):
+            v *= 1000
+        if v <= 100_000:
+            best = max(best or 0, v)
+    return best

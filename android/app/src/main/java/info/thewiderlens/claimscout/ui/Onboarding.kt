@@ -140,7 +140,10 @@ private fun Pick(vm: Vm) {
     }) {
         Text("Page ${vm.groupIndex + 1} of ${groups.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            g.items.forEach { item -> FilterChip(item.id in vm.picked, { vm.togglePick(item.id) }, label = { Text(item.label) }) }
+            g.items.forEach { item ->
+                FilterChip(item.id in vm.picked, { vm.togglePick(item.id) }, label = { Text(item.label) },
+                    leadingIcon = { CompanyLogo(vm, item.id, item.label, item.logo, 22.dp) })
+            }
         }
         Text("Pick anything you've bought, used, or been a customer, patient or member of. You'll get one quick question about each.",
             style = MaterialTheme.typography.bodySmall)
@@ -150,11 +153,19 @@ private fun Pick(vm: Vm) {
 @Composable
 private fun Ask(vm: Vm) {
     val item: QItem = vm.toAsk.firstOrNull() ?: return
-    Page(item.label, footer = {
+    Page("", footer = {
         OutlinedButton({ vm.answer(item, "no") }, Modifier.weight(1f), enabled = !vm.busy) { Text("No") }
         OutlinedButton({ vm.answer(item, "unsure") }, Modifier.weight(1f), enabled = !vm.busy) { Text("Not sure") }
         Button({ vm.answer(item, "yes") }, Modifier.weight(1f), enabled = !vm.busy) { Text("Yes") }
     }) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            CompanyLogo(vm, item.id, item.label, item.logo, 64.dp)
+            Spacer(Modifier.padding(start = 14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.label, style = MaterialTheme.typography.headlineSmall)
+                item.amountText()?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontFamily = Montserrat, fontWeight = FontWeight.ExtraBold) }
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.question ?: "Does this describe you?", style = MaterialTheme.typography.titleMedium)
@@ -220,4 +231,10 @@ private fun DoneStep(vm: Vm) {
             style = MaterialTheme.typography.bodySmall)
         Text("Your answers built your profile. You can change it anytime in Settings.", style = MaterialTheme.typography.bodySmall)
     }
+}
+
+private fun QItem.amountText(): String? = award?.let { a ->
+    Regex("""\$\s?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand)?\b""", RegexOption.IGNORE_CASE).findAll(a)
+        .mapNotNull { m -> m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { if (m.groupValues[2].isNotEmpty()) it * 1000 else it } }
+        .filter { it <= 100_000 }.maxOrNull()?.let { "Up to " + money(it) }
 }

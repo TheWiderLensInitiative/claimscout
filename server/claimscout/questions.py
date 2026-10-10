@@ -86,6 +86,7 @@ async def enrich(db, batch=8, log=print) -> int:
         listing = "\n\n".join(f"[{s['id']}] {s['title']}\nEligible: {(s['eligibility'] or '')[:900]}" for s in chunk)
         user = (f"{listing}\n\nFor each settlement return an object in a JSON array:\n"
                 '{"id": "...", "label": "the company, brand or product people would recognise, max 4 words", '
+                '"company": "the company being sued, as people know it", "domain": "its main US website, e.g. cvs.com", '
                 f'"category": one of {json.dumps(cats)}, '
                 '"question": "one yes/no question, max 30 words, starting with Did/Have/Were/Are, with the dates and places that matter"}')
         try:
@@ -100,8 +101,12 @@ async def enrich(db, batch=8, log=print) -> int:
             label = str(r.get("label") or "").strip()[:60]
             question = str(r.get("question") or "").strip()[:300]
             category = r.get("category") if r.get("category") in cats else None
+            company = str(r.get("company") or "").strip()[:80] or None
+            domain = re.sub(r"^https?://(www\.)?|/.*$", "", str(r.get("domain") or "").strip().lower())[:80] or None
             db.x("""UPDATE settlements SET label=COALESCE(NULLIF(?,''), label), category=COALESCE(?, category),
-                    question=NULLIF(?,''), enriched=1 WHERE id=?""", (label, category, question, r["id"]))
+                    question=NULLIF(?,''), company=COALESCE(?, company), domain=COALESCE(?, domain), enriched=1,
+                    logo=CASE WHEN COALESCE(logo,'')='' THEN NULL ELSE logo END WHERE id=?""",
+                 (label, category, question, company, domain, r["id"]))
             done += 1
     return done
 
@@ -123,11 +128,12 @@ def build(db, profile: dict, only_unanswered=True) -> dict:
         if mine and s["states"] and not (mine & set(s["states"])):
             skipped_state += 1
             continue
-        row = db.q("SELECT label, category, question FROM settlements WHERE id=?", (s["id"],))[0]
+        row = db.q("SELECT label, category, question, logo FROM settlements WHERE id=?", (s["id"],))[0]
         groups.setdefault(row["category"] or OTHER[0], []).append({
             "id": s["id"], "label": row["label"] or s["title"], "title": s["title"], "question": row["question"],
             "eligibility": s.get("eligibility"), "states": s["states"], "deadline": s["deadline"],
-            "award": s.get("award"), "proof_needed": s.get("proof_needed"), "answer": have.get(s["id"])})
+            "award": s.get("award"), "proof_needed": s.get("proof_needed"), "answer": have.get(s["id"]),
+            "logo": bool(row["logo"])})
     order = [c for c, _, _ in CATEGORIES] + [OTHER[0]]
     out = [{"category": c, "prompt": PROMPTS[c], "items": sorted(groups[c], key=lambda x: x["label"].lower())}
            for c in order if c in groups]

@@ -10,7 +10,8 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
-from . import ai, matcher, pairing, proof, questions
+from . import ai, logos, matcher, pairing, proof, questions
+from .text import max_amount
 from .collectors import community, topclassactions
 from .db import DB
 
@@ -43,6 +44,10 @@ class Hub:
                 report["questions_ai"] = await questions.enrich(self.db, log=log)
             except Exception as e:
                 log(f"questionnaire AI failed: {e}")
+            try:
+                report["logos"] = await logos.resolve(self.db, log=log)
+            except Exception as e:
+                log(f"logos failed: {e}")
             full = self.db.get("rematch", True)
             self.db.put("rematch", False)   # cleared first: a profile saved during this run sets it again
             report["matching"] = await matcher.run(self.db, only_new=not full, log=log)
@@ -112,7 +117,13 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         n = db.q("""SELECT COUNT(*) n, SUM(m.verdict='likely') likely, SUM(m.verdict='maybe') maybe
                     FROM settlements s LEFT JOIN matches m ON m.settlement_id=s.id
                     WHERE s.deadline IS NULL OR s.deadline >= date('now')""")[0]
+        likely = db.q("""SELECT s.award FROM settlements s JOIN matches m ON m.settlement_id=s.id
+                         WHERE m.verdict='likely' AND COALESCE(m.dismissed,0)=0
+                         AND (s.deadline IS NULL OR s.deadline >= date('now'))
+                         AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.settlement_id=s.id)""")
+        potential = sum(a for r in likely if (a := max_amount(r["award"])))
         return {"version": VERSION, "open": n["n"], "likely": n["likely"] or 0, "maybe": n["maybe"] or 0,
+                "potential": round(potential), "potential_unknown": sum(1 for r in likely if max_amount(r["award"]) is None),
                 "claims": db.q("SELECT COUNT(*) n FROM claims")[0]["n"], "refreshing": hub.lock.locked(),
                 "last_refresh": db.get("last_refresh"), "ai": ai.public_settings(db),
                 "profile_set": bool(matcher.profile(db)["companies"] or matcher.profile(db)["states"]),
@@ -184,11 +195,21 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
 
     def _row(r):
         r["states"] = json.loads(r["states"] or "[]")
+        r["amount"] = max_amount(r.get("award"))
+        r["logo"] = bool(r.get("logo"))
         r["proof_plan"] = json.loads(r["proof_plan"]) if r.get("proof_plan") else None
         return r
 
+    @app.get("/api/logo/{sid}", dependencies=[api])
+    def logo(sid: str):
+        r = db.q("SELECT logo FROM settlements WHERE id=?", (sid,))
+        f = (logos.DIR / r[0]["logo"]).resolve() if r and r[0]["logo"] else None
+        if not f or f.parent != logos.DIR.resolve() or not f.is_file():   # only files directly in logos/
+            raise HTTPException(404, "no logo")
+        return FileResponse(f, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
     @app.get("/api/settlements", dependencies=[api])
-    def settlements(view: str = "matches", q: str = ""):
+    def settlements(view: str = "matches", q: str = "", category: str = ""):
         where = ["(s.deadline IS NULL OR s.deadline >= date('now'))"]
         args = []
         if view == "matches":
@@ -198,9 +219,13 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         elif view == "noproof":
             where.append("s.proof_needed=0 AND COALESCE(m.verdict,'') != 'unlikely'")
         if q:
-            where.append("(s.title LIKE ? OR s.eligibility LIKE ?)")
-            args += [f"%{q}%"] * 2
+            where.append("(s.title LIKE ? OR s.eligibility LIKE ? OR s.label LIKE ?)")
+            args += [f"%{q}%"] * 3
+        if category:
+            where.append("s.category = ?")
+            args.append(category)
         rows = db.q(f"""SELECT s.id, s.title, s.award, s.deadline, s.proof_needed, s.states, s.source,
+                        s.label, s.category, COALESCE(s.logo,'') != '' AS logo,
                         m.verdict, m.score, m.reason, m.method, m.proof_plan, c.status claim_status,
                         (SELECT COUNT(*) FROM proofs p WHERE p.settlement_id=s.id) proofs
                         FROM settlements s LEFT JOIN matches m ON m.settlement_id=s.id
@@ -223,6 +248,8 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
             m["proof_plan"] = json.loads(m["proof_plan"]) if m["proof_plan"] else None
         plan = (m or {}).get("proof_plan") or matcher.fallback_plan(db, s)
         claim = db.q("SELECT * FROM claims WHERE settlement_id=?", (sid,))
+        s["logo"] = bool(s.get("logo"))
+        s["amount"] = max_amount(s.get("award"))
         return {**s, "match": m, "proof_plan": plan, "claim": claim[0] if claim else None,
                 "proofs": db.q("SELECT * FROM proofs WHERE settlement_id=? ORDER BY date", (sid,))}
 

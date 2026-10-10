@@ -71,7 +71,9 @@ class DB:
             self.conn.executescript(SCHEMA)
             have = {r[1] for r in self.conn.execute("PRAGMA table_info(settlements)")}
             # questionnaire fields, filled by questions.py (rules first, AI later); not touched by refreshes
-            for col in ("label TEXT", "category TEXT", "question TEXT", "enriched INTEGER DEFAULT 0"):
+            # logo: file name in logos/ ('' = looked, none found); company/domain help find it
+            for col in ("label TEXT", "category TEXT", "question TEXT", "enriched INTEGER DEFAULT 0",
+                        "logo TEXT", "company TEXT", "domain TEXT"):
                 if col.split()[0] not in have:
                     self.conn.execute(f"ALTER TABLE settlements ADD COLUMN {col}")
             self.conn.commit()

@@ -46,6 +46,8 @@ class Vm(app: Application) : AndroidViewModel(app) {
     var status by mutableStateOf<Status?>(null)
     var query by mutableStateOf("")
     var noProofOnly by mutableStateOf(false)
+    var category by mutableStateOf("")
+    var sortByPay by mutableStateOf(false)
     var detail by mutableStateOf<Detail?>(null)
     var openId by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
@@ -82,6 +84,8 @@ class Vm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    suspend fun apiOrNull(): Api? = store.pairing()?.let { p -> Api(p) }
+
     private suspend fun api(): Api {
         val p = store.pairing() ?: throw ApiException("Not paired")
         return Api(p) { good -> store.setPairing(p.copy(lastGood = good)) }
@@ -113,7 +117,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
         status = a.status()
         rows = when (tab) {
             Tab.Settings -> rows
-            Tab.Browse -> a.settlements(if (noProofOnly) "noproof" else "all", query)
+            Tab.Browse -> a.settlements(if (noProofOnly) "noproof" else "all", query, category)
             else -> a.settlements(tab.view)
         }
     }

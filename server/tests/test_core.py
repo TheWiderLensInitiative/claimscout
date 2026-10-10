@@ -191,3 +191,32 @@ def test_enrich_with_ai(db, monkeypatch):
     assert asyncio.run(questions.enrich(db)) == 1
     item = questions.build(db, matcher.PROFILE_DEFAULT)["groups"][0]
     assert item["category"] == "Home & products" and item["items"][0]["question"].startswith("Did you buy")
+
+
+def test_amounts_and_defendants():
+    from claimscout.logos import _us_first, defendant
+    from claimscout.text import max_amount
+    assert max_amount("Up to $5,000 for documented losses and $100 pro rata") == 5000
+    assert max_amount("Estimated $25 to $95") == 95
+    assert max_amount("$20.5M fund; up to $10 each") == 10
+    assert max_amount("TBD") is None
+    assert defendant("CVS Pharmacy Inc. agreed to pay $20.5 million") == "CVS Pharmacy"
+    assert defendant("Visa and Mastercard agreed to a settlement") == "Visa"
+    assert defendant("Navy Federal Credit Union (NFCU) has agreed to") == "Navy Federal Credit Union"
+    assert sorted(["https://www.amazon.it/", "https://www.amazon.com/"], key=_us_first)[0] == "https://www.amazon.com/"
+
+
+def test_logo_endpoint(db, tmp_path, monkeypatch):
+    from claimscout import logos
+    monkeypatch.setattr(logos, "DIR", tmp_path)
+    [s] = topclassactions.parse_feed(FEED)
+    db.upsert_settlement(s)
+    c = TestClient(create_app(db))
+    h = {"Authorization": "Bearer " + pairing.token(db)}
+    assert c.get(f"/api/logo/{s['id']}", headers=h).status_code == 404
+    (tmp_path / "acme.png").write_bytes(b"\x89PNG fake")
+    db.x("UPDATE settlements SET logo='acme.png' WHERE id=?", (s["id"],))
+    assert c.get(f"/api/logo/{s['id']}", headers=h).content.startswith(b"\x89PNG")
+    assert c.get("/api/settlements?view=all", headers=h).json()["settlements"][0]["logo"] is True
+    db.x("UPDATE settlements SET logo=? WHERE id=?", ("../" * 30 + "etc/passwd", s["id"]))   # never serve outside the folder
+    assert c.get(f"/api/logo/{s['id']}", headers=h).status_code == 404

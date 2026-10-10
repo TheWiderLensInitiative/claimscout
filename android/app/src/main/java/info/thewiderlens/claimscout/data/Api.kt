@@ -22,7 +22,8 @@ import javax.net.ssl.X509TrustManager
                               val after: String? = null, val before: String? = null)
 @Serializable data class Row(val id: String, val title: String, val award: String? = null, val deadline: String? = null,
                              val proof_needed: Int? = null, val states: List<String> = emptyList(), val source: String? = null,
-                             val verdict: String? = null, val reason: String? = null, val claim_status: String? = null, val proofs: Int = 0)
+                             val verdict: String? = null, val reason: String? = null, val claim_status: String? = null, val proofs: Int = 0,
+                             val label: String? = null, val category: String? = null, val logo: Boolean = false, val amount: Double? = null)
 @Serializable data class Rows(val settlements: List<Row>)
 @Serializable data class Match(val verdict: String? = null, val reason: String? = null, val method: String? = null)
 @Serializable data class Proof(val id: Long? = null, val account: String? = null, val message_id: String? = null,
@@ -37,13 +38,15 @@ import javax.net.ssl.X509TrustManager
                                 val proof_needed: Int? = null, val claim_url: String? = null, val website: String? = null,
                                 val deadline: String? = null, val case_name: String? = null, val states: List<String> = emptyList(),
                                 val source: String? = null, val match: Match? = null, val proof_plan: Plan? = null,
-                                val claim: Claim? = null, val proofs: List<Proof> = emptyList())
+                                val claim: Claim? = null, val proofs: List<Proof> = emptyList(),
+                                val label: String? = null, val category: String? = null, val logo: Boolean = false, val amount: Double? = null)
 @Serializable data class Status(val version: String, val open: Int, val likely: Int, val maybe: Int, val claims: Int,
-                                val refreshing: Boolean = false, val profile_set: Boolean = false, val unanswered: Int = 0)
+                                val refreshing: Boolean = false, val profile_set: Boolean = false, val unanswered: Int = 0,
+                                val potential: Int = 0, val potential_unknown: Int = 0)
 @Serializable data class QItem(val id: String, val label: String, val title: String, val question: String? = null,
                                val eligibility: String? = null, val states: List<String> = emptyList(),
                                val deadline: String? = null, val award: String? = null, val proof_needed: Int? = null,
-                               val answer: String? = null)
+                               val answer: String? = null, val logo: Boolean = false)
 @Serializable data class QGroup(val category: String, val prompt: String, val items: List<QItem>)
 @Serializable data class Questionnaire(val states_known: Boolean = false, val groups: List<QGroup> = emptyList(),
                                        val count: Int = 0, val skipped_by_state: Int = 0, val answered: Int = 0)
@@ -116,11 +119,23 @@ class Api(private val pairing: Pairing, private val onGood: suspend (String) -> 
         throw ApiException("Can't reach your PC. Is ClaimScout running, and are you on home Wi-Fi or Tailscale? (${last.message})")
     }
 
+    /** A company logo PNG from the PC, or null if it has none. */
+    suspend fun logo(id: String): ByteArray? = withContext(Dispatchers.IO) {
+        val order = listOfNotNull(pairing.lastGood) + pairing.urls.filter { it != pairing.lastGood }
+        for (base in order) {
+            val req = Request.Builder().url("$base/api/logo/${Uri.encode(id)}").header("Authorization", "Bearer ${pairing.token}").build()
+            try {
+                http.newCall(req).execute().use { r -> return@withContext if (r.isSuccessful) r.body.bytes() else null }
+            } catch (e: IOException) { continue }
+        }
+        null
+    }
+
     private fun errorDetail(text: String) = runCatching { json.decodeFromString<JsonObject>(text)["detail"]?.toString()?.trim('"') }.getOrNull()
 
     suspend fun status() = json.decodeFromString<Status>(call("GET", "/status"))
-    suspend fun settlements(view: String, q: String = "") =
-        json.decodeFromString<Rows>(call("GET", "/settlements?view=$view&q=${Uri.encode(q)}")).settlements
+    suspend fun settlements(view: String, q: String = "", category: String = "") =
+        json.decodeFromString<Rows>(call("GET", "/settlements?view=$view&q=${Uri.encode(q)}&category=${Uri.encode(category)}")).settlements
     suspend fun detail(id: String) = json.decodeFromString<Detail>(call("GET", "/settlements/${Uri.encode(id)}"))
     suspend fun dismiss(id: String) = call("POST", "/settlements/${Uri.encode(id)}/dismiss", "{}")
     suspend fun rematch(id: String) = call("POST", "/settlements/${Uri.encode(id)}/match", "{}")

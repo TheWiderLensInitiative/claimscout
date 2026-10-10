@@ -13,6 +13,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import info.thewiderlens.claimscout.ui.App
 import info.thewiderlens.claimscout.ui.Vm
+import info.thewiderlens.claimscout.ui.brandTypography
 
 class MainActivity : ComponentActivity() {
     private val vm: Vm by viewModels()
@@ -32,7 +33,7 @@ class MainActivity : ComponentActivity() {
                 onPrimaryContainer = Color(0xFF00305F), secondaryContainer = Color(0xFFDDE8F6), tertiary = Color(0xFFA55B00),
                 background = Color.White, surface = Color.White, surfaceContainer = Color(0xFFF3F5F8),
                 surfaceContainerHighest = Color(0xFFEDF0F4), surfaceContainerHigh = Color(0xFFF0F2F6), onSurface = Color(0xFF191A1C))
-            MaterialTheme(colorScheme = scheme) { App(vm) }
+            MaterialTheme(colorScheme = scheme, typography = brandTypography()) { App(vm) }
         }
     }
 

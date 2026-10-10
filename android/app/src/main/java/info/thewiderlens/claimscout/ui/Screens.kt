@@ -68,10 +68,10 @@ import info.thewiderlens.claimscout.data.Detail
 import info.thewiderlens.claimscout.data.Profile
 import info.thewiderlens.claimscout.data.Row
 
-private fun openUrl(ctx: Context, url: String) =
+internal fun openUrl(ctx: Context, url: String) =
     runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 
-private fun copy(ctx: Context, text: String) =
+internal fun copy(ctx: Context, text: String) =
     ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("ClaimScout", text))
 
 @Composable
@@ -107,155 +107,6 @@ fun PairScreen(vm: Vm) {
             ErrorText(vm)
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MainScreen(vm: Vm) {
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(vm.tab.label) }, navigationIcon = {
-                Image(painterResource(R.drawable.brand_mark), "ClaimScout", Modifier.padding(start = 12.dp, end = 4.dp).size(36.dp))
-            })
-        },
-        bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { t ->
-                    NavigationBarItem(selected = vm.tab == t, onClick = { vm.select(t) }, label = { Text(t.label) },
-                        icon = { Icon(when (t) { Tab.Matches -> Icons.Filled.Home; Tab.Browse -> Icons.Filled.Search
-                            Tab.Claims -> Icons.Filled.CheckCircle; Tab.Settings -> Icons.Filled.Settings }, null) })
-                }
-            }
-        }
-    ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize()) {
-            if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Column(Modifier.padding(horizontal = 16.dp)) { ErrorText(vm) }
-            when (vm.tab) {
-                Tab.Settings -> SettingsScreen(vm)
-                else -> ListScreen(vm)
-            }
-        }
-    }
-}
-
-@Composable
-fun ListScreen(vm: Vm) {
-    Column(Modifier.padding(horizontal = 16.dp)) {
-        if (vm.tab == Tab.Browse) {
-            OutlinedTextField(vm.query, { vm.query = it }, label = { Text("Search settlements") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth(), trailingIcon = { IconButton({ vm.reload() }) { Icon(Icons.Filled.Search, "Search") } })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(vm.noProofOnly, { vm.noProofOnly = !vm.noProofOnly; vm.reload() }, label = { Text("No proof needed") })
-            }
-        }
-        vm.status?.let { s ->
-            if (vm.tab == Tab.Matches) {
-                Text("${s.likely} likely · ${s.maybe} maybe · ${s.open} open settlements" + if (s.refreshing) " · checking…" else "",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
-                if (s.unanswered > 0) Card(Modifier.fillMaxWidth().clickable { vm.startQuiz(full = false) }) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("${s.unanswered} settlement${if (s.unanswered == 1) "" else "s"} to check", fontWeight = FontWeight.SemiBold)
-                        Text("Answer a few quick questions to see if they fit you.", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            items(vm.rows, key = { it.id }) { RowCard(it) { vm.open(it.id) } }
-            if (vm.rows.isEmpty() && !vm.busy) item {
-                Text(when (vm.tab) { Tab.Claims -> "Claims you mark as filed show up here."
-                    Tab.Matches -> "No matches yet. Fill in your profile, or browse every open settlement."
-                    else -> "Nothing found." }, Modifier.padding(16.dp))
-            }
-            item { Spacer(Modifier.height(16.dp)) }
-        }
-    }
-}
-
-@Composable
-fun Verdict(v: String?) {
-    val (text, color) = when (v) {
-        "likely" -> "Likely you" to MaterialTheme.colorScheme.primary
-        "maybe" -> "Maybe" to MaterialTheme.colorScheme.tertiary
-        "unlikely" -> "Unlikely" to MaterialTheme.colorScheme.outline
-        else -> return
-    }
-    Text(text, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-}
-
-@Composable
-fun RowCard(r: Row, onClick: () -> Unit) = Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(r.title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Verdict(r.verdict)
-        }
-        Text(listOfNotNull(r.deadline?.let { "Claim by $it" } ?: "No deadline listed", r.award,
-            when (r.proof_needed) { 0 -> "no proof needed"; 1 -> "proof needed"; else -> null },
-            r.states.takeIf { it.isNotEmpty() }?.let { it.joinToString() + " only" },
-            r.claim_status?.let { "claim $it" }, r.proofs.takeIf { it > 0 }?.let { "$it proof found" })
-            .joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-        r.reason?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DetailScreen(vm: Vm) {
-    val ctx = LocalContext.current
-    BackHandler { vm.open(null); vm.reload() }
-    var filing by remember { mutableStateOf(false) }
-    Scaffold(topBar = {
-        TopAppBar(title = { Text("Settlement") }, navigationIcon = {
-            IconButton({ vm.open(null); vm.reload() }) { Icon(Icons.Filled.ArrowBack, "Back") }
-        })
-    }) { pad ->
-        val d = vm.detail
-        Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            ErrorText(vm)
-            if (d == null) return@Column
-            Text(d.title, style = MaterialTheme.typography.headlineSmall)
-            d.match?.let { m ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Verdict(m.verdict)
-                    m.reason?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)) }
-                }
-            }
-            Fact("Claim deadline", d.deadline ?: "not listed")
-            Fact("Potential award", d.award ?: "TBD")
-            Fact("Who's eligible", d.eligibility ?: "-")
-            Fact("Proof needed", d.proof ?: "not stated")
-            d.case_name?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-
-            Text("Only file if you qualify. Claims are made under penalty of perjury.",
-                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                d.claim_url?.let { Button({ openUrl(ctx, it) }) { Text("Open claim form") } }
-                d.website?.let { OutlinedButton({ openUrl(ctx, it) }) { Text("Website") } }
-            }
-
-            HorizontalDivider()
-            Text("Proof from your email", style = MaterialTheme.typography.titleMedium)
-            ProofSection(vm, d, ctx)
-
-            HorizontalDivider()
-            ClaimSection(vm, d, onFile = { filing = true })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton({ vm.recheck(d.id) }) { Text("Check again") }
-                TextButton({ vm.dismiss(d.id) }) { Text("Not for me") }
-                d.url?.let { TextButton({ openUrl(ctx, it) }) { Text("Source") } }
-            }
-        }
-        if (filing && d != null) FileDialog(d.claim, onDismiss = { filing = false }) { c -> vm.saveClaim(d.id, c); filing = false }
-    }
-}
-
-@Composable
-fun Fact(label: String, value: String) = Column {
-    Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
-    Text(value)
 }
 
 @Composable
@@ -364,8 +215,9 @@ fun SettingsScreen(vm: Vm) {
             OutlinedButton({ vm.checkNow() }) { Text("Check for new settlements") }
             TextButton({ vm.unpair() }) { Text("Unpair") }
         }
-        Text("ClaimScout is free and open source. It isn't a law firm or a settlement administrator. " +
-            "Settlement listings come from public sources; always read the official notice.", style = MaterialTheme.typography.bodySmall)
+        Text("ClaimScout is free and open source. It isn't a law firm or a settlement administrator, and it isn't " +
+            "affiliated with the companies shown; their names and logos belong to them. Listings come from public sources; " +
+            "always read the official notice.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(24.dp))
     }
 }
