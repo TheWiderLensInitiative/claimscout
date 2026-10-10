@@ -114,13 +114,15 @@ fun ProofSection(vm: Vm, d: Detail, ctx: Context) {
     val accounts by vm.accounts.collectAsState()
     d.proof_plan?.let { p ->
         val what = (p.senders.map { "from $it" } + p.keywords.map { "“$it”" }).joinToString(", ")
-        if (what.isNotEmpty()) Text("Searches: $what" + listOfNotNull(p.after?.let { " after $it" }, p.before?.let { " before $it" }).joinToString(""),
+        if (what.isNotEmpty() && d.proof_needed != 0) Text("Searches: $what" + listOfNotNull(p.after?.let { " after $it" }, p.before?.let { " before $it" }).joinToString(""),
             style = MaterialTheme.typography.bodySmall)
     }
+    if (d.proof_needed == 0) Text("No proof needed: you can file with just the claim form.",
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button({ vm.findProof() }, enabled = !vm.findingProof) {
-            Text(if (accounts.isEmpty()) "Find proof (connect email first)" else "Find proof in my email")
-        }
+        val label = if (accounts.isEmpty()) "Find proof (connect email first)" else if (d.proof_needed == 0) "Search my email anyway" else "Find proof in my email"
+        if (d.proof_needed == 0) OutlinedButton({ vm.findProof() }, enabled = !vm.findingProof) { Text(label) }
+        else Button({ vm.findProof() }, enabled = !vm.findingProof) { Text(label) }
         if (vm.findingProof) CircularProgressIndicator(Modifier.height(24.dp))
     }
     vm.proofNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

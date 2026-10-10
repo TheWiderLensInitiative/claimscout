@@ -263,3 +263,30 @@ def test_payout_flow(db):
     c.post(f"/api/payouts/{pid}", json={"status": "done"}, headers=h)
     assert c.get("/api/payouts", headers=h).json()["payouts"] == []
     assert not c.get("/api/payouts/plan?since=1", headers=h).json()["first_run"]
+
+
+NEWSLETTERS = [   # real subjects from the user's inbox: settlement ads, never proof or payouts
+    {"from": 'Dan <daniel@mail.modemobile.com>', "subject": "🚨LAST CHANCE: Claim a Share of $380,500,000 Settlement!💸",
+     "text": "Equifax data breach settlement: claim your share before the deadline. No proof needed!"},
+    {"from": '"ModeMobile.com" <daniel@mail.modemobile.com>', "subject": "⏰ FINAL HOURS ⏰ Claim Your Share of a $381 Million Settlement!",
+     "text": "Did you have an Equifax account? Your order of cash is waiting. Unsubscribe."},
+    {"from": "Dan <daniel@mail.modemobile.com>", "subject": "Did You Buy This?  Get Cash!💰🌟 ($3.5M Settlement—No Proof Needed!)",
+     "text": "Order now. Your settlement payment could be $50."},
+]
+
+
+def test_newsletters_are_not_proof_or_payouts(db):
+    from claimscout.payouts import classify
+    s = {"id": "x", "title": "$30M Equifax hard inquiry dispute", "label": "Equifax", "domain": "equifax.com",
+         "summary": "Equifax agreed to pay $30 million to resolve claims.", "eligibility": "", "proof": "N/A"}
+    db.upsert_settlement({**s, "source": "t", "states": []})
+    db.x("UPDATE settlements SET label='Equifax', domain='equifax.com' WHERE id='x'")
+    msgs = [{"account": "me", "id": str(i), "date": "2024-01-18", **n} for i, n in enumerate(NEWSLETTERS)]
+    real = {"account": "me", "id": "r", "date": "2023-05-02", "from": "Equifax <noreply@equifax.com>",
+            "subject": "Your account statement", "text": "Account number ending 1234. Order ID AB-998877."}
+    out = asyncio.run(proof.extract(db, db.settlement("x"), msgs + [real]))
+    assert [o["message_id"] for o in out] == ["r"]
+    assert all(classify(n)["kind"] == "other" for n in NEWSLETTERS)
+    # and the search goes to the company's own address
+    from claimscout.proof import plan_for
+    assert plan_for(db.settlement("x"), {"senders": [], "keywords": ["Equifax"]})["senders"] == ["equifax.com"]

@@ -248,7 +248,7 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         m = m[0] if m else None
         if m:
             m["proof_plan"] = json.loads(m["proof_plan"]) if m["proof_plan"] else None
-        plan = (m or {}).get("proof_plan") or matcher.fallback_plan(db, s)
+        plan = proof.plan_for(s, (m or {}).get("proof_plan") or matcher.fallback_plan(db, s))
         claim = db.q("SELECT * FROM claims WHERE settlement_id=?", (sid,))
         s["logo"] = bool(s.get("logo"))
         s["amount"] = max_amount(s.get("award"))

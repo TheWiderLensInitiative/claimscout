@@ -8,7 +8,7 @@ import datetime as dt
 import re
 import time
 
-from . import ai
+from . import ai, mailfilter
 from .text import all_dates, max_amount, parse_date
 
 # Settlement administrators and the payment services they use. Community additions welcome.
@@ -66,10 +66,9 @@ def _from_administrator(sender: str) -> bool:
 
 def classify(m: dict) -> dict:
     blob = f"{m.get('subject', '')}\n{m.get('text', '')}"
-    # A store promo ("win a $200 Virtual Visa Prepaid Card!") is not a payout: it must be about a settlement or
-    # claim, or come from a settlement administrator.
-    if not (_from_administrator(m.get("from", "")) or
-            re.search(r"settlement|class action|claim (id|number|#)|your claim|claimant|administrator", blob, re.I)):
+    # Ads are never payouts: a store promo ("win a $200 Virtual Visa Prepaid Card!") or a settlement newsletter
+    # ("Claim your share of $380M!"). A payout comes from an administrator or talks about *your* claim.
+    if mailfilter.is_marketing(m) or not (_from_administrator(m.get("from", "")) or mailfilter.is_personal(m)):
         return {"kind": "other", "amount": None, "expires": None, "settlement": None}
     # the subject says what the email is for; the body often lists every payment option
     kind = next((k for hay in (m.get("subject", ""), blob) for k, pat in KINDS.items()

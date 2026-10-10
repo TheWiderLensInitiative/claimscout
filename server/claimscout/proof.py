@@ -6,7 +6,8 @@ facts and the message reference (to reopen it on the phone), not the email body.
 import re
 import time
 
-from . import ai
+from . import ai, mailfilter
+from .logos import defendant
 
 MAX_CHARS = 4000
 MAX_MESSAGES = 15
@@ -31,7 +32,22 @@ def clean(messages):
     return out
 
 
-def heuristic(m) -> dict | None:
+def company(s) -> tuple[list[str], list[str]]:
+    """(names, domains) the company behind a settlement goes by."""
+    names = [x for x in (s.get("company"), defendant(s.get("summary")), s.get("label")) if x]
+    return names, [d for d in (s.get("domain"),) if d]
+
+
+def from_company(m, s) -> bool:
+    """Proof comes from the company itself, or (breach notices) a settlement administrator."""
+    from .payouts import ADMINISTRATORS
+    names, domains = company(s)
+    return mailfilter.sender_is(m, names, domains + ADMINISTRATORS)
+
+
+def heuristic(m, s=None) -> dict | None:
+    if mailfilter.is_marketing(m) or (s is not None and not from_company(m, s)):
+        return None
     blob = f"{m['subject']}\n{m['text']}"
     kind = next((k for k, pat in _KINDS if re.search(pat, blob, re.I)), None)
     if not kind:
@@ -44,7 +60,8 @@ def heuristic(m) -> dict | None:
 
 
 async def extract(db, s, messages) -> list[dict]:
-    msgs = clean(messages)
+    # newsletters advertising settlements mention every company and are never proof
+    msgs = [m for m in clean(messages) if not mailfilter.is_marketing(m)]
     if not msgs:
         return []
     found = {}
@@ -56,7 +73,9 @@ async def extract(db, s, messages) -> list[dict]:
                 'Return a JSON array, one entry per email that is useful proof for THIS settlement:\n'
                 '[{"index": 0, "kind": "receipt|account|subscription|breach_notice|other", "date": "YYYY-MM-DD", '
                 '"amount": "$12.34 or null", "order_number": "or null", "summary": "what it proves, one line"}]\n'
-                "Leave out unrelated emails. Return [] if none help.")
+                "Only count emails the company itself (or a settlement administrator) sent to this person: receipts, "
+                "order or account emails, statements, breach notices. Newsletters or ads about settlements are never "
+                "proof. Leave out unrelated emails. Return [] if none help.")
         try:
             rows = await ai.ask_json(db, SYSTEM, user, max_tokens=1200)
             for r in rows if isinstance(rows, list) else []:
@@ -67,7 +86,7 @@ async def extract(db, s, messages) -> list[dict]:
         except ai.AIError:
             found = {}
     if not found:
-        found = {i: h for i, m in enumerate(msgs) if (h := heuristic(m))}
+        found = {i: h for i, m in enumerate(msgs) if (h := heuristic(m, s))}
     out = []
     for i, f in sorted(found.items()):
         m = msgs[i]
@@ -81,3 +100,12 @@ async def extract(db, s, messages) -> list[dict]:
              (*row.values(), time.time()))
         out.append(row)
     return out
+
+
+def plan_for(s, plan: dict | None) -> dict:
+    """Search the company's own mail when we know its website (a receipt comes from equifax.com, a newsletter
+    that mentions Equifax doesn't)."""
+    plan = dict(plan or {})
+    if s.get("domain") and not plan.get("senders"):
+        plan["senders"] = [s["domain"]]
+    return plan
