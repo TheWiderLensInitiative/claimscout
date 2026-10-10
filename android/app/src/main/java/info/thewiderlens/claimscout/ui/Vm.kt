@@ -147,6 +147,7 @@ class Vm(app: Application) : AndroidViewModel(app) {
     fun saveClaim(id: String, c: Claim?) = launch {
         if (c == null) api().deleteClaim(id) else api().saveClaim(id, c)
         detail = api().detail(id)
+        reload()   // a filed claim leaves For you and shows up under My claims
     }
 
     fun deleteProof(pid: Long) = launch { api().deleteProof(pid); refreshDetail() }

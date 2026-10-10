@@ -123,8 +123,10 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
 
     @app.get("/api/status", dependencies=[api])
     def status():
-        n = db.q("""SELECT COUNT(*) n, SUM(m.verdict='likely') likely, SUM(m.verdict='maybe') maybe
+        n = db.q("""SELECT COUNT(*) n, SUM(m.verdict='likely' AND c.id IS NULL) likely,
+                    SUM(m.verdict='maybe' AND c.id IS NULL) maybe
                     FROM settlements s LEFT JOIN matches m ON m.settlement_id=s.id
+                    LEFT JOIN claims c ON c.settlement_id=s.id
                     WHERE s.deadline IS NULL OR s.deadline >= date('now')""")[0]
         likely = db.q("""SELECT s.award FROM settlements s JOIN matches m ON m.settlement_id=s.id
                          WHERE m.verdict='likely' AND COALESCE(m.dismissed,0)=0
@@ -224,11 +226,12 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         where = ["(s.deadline IS NULL OR s.deadline >= date('now'))"]
         args = []
         if view == "matches":
-            where.append("m.verdict IN ('likely','maybe') AND COALESCE(m.dismissed,0)=0")
+            # once you've filed it, it lives under My claims instead
+            where.append("m.verdict IN ('likely','maybe') AND COALESCE(m.dismissed,0)=0 AND c.id IS NULL")
         elif view == "claimed":
             where = ["c.id IS NOT NULL"]
         elif view == "noproof":
-            where.append("s.proof_needed=0 AND COALESCE(m.verdict,'') != 'unlikely'")
+            where.append("s.proof_needed=0 AND COALESCE(m.verdict,'') != 'unlikely' AND c.id IS NULL")
         if q:
             where.append("(s.title LIKE ? OR s.eligibility LIKE ? OR s.label LIKE ?)")
             args += [f"%{q}%"] * 3

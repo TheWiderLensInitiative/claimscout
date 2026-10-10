@@ -134,6 +134,10 @@ def test_api(db, monkeypatch):
     c.put(f"/api/claims/{s['id']}", json={"status": "filed", "claim_number": "C-1"}, headers=h)
     assert c.get("/api/new", headers=h).json()["new"] == []            # already claimed: no nagging
     assert c.get("/api/settlements?view=claimed", headers=h).json()["settlements"][0]["claim_status"] == "filed"
+    assert c.get("/api/settlements", headers=h).json()["settlements"] == []   # filed: off For you, under My claims
+    assert c.get("/api/status", headers=h).json()["likely"] == 0
+    c.delete(f"/api/claims/{s['id']}", headers={**h, "Content-Type": "application/json"})
+    assert len(c.get("/api/settlements", headers=h).json()["settlements"]) == 1
     # AI key is never echoed back
     c.put("/api/ai", json={"provider": "openrouter", "api_key": "sk-secret", "model": "x:free"}, headers=h)
     assert c.get("/api/ai", headers=h).json()["api_key"] == "set"
