@@ -270,7 +270,7 @@ fun SettlementCard(vm: Vm, r: Row, onClick: () -> Unit) = Card(
                     else -> Badge(r.claim_status.replaceFirstChar { it.uppercase() }, Tone.Blue)
                 }
                 if (r.claim_status == null) deadlineText(r.deadline)?.let { (t, urgent) -> Badge(t, if (urgent) Tone.Red else Tone.Gray) }
-                if (r.proof_needed == 0) Badge("No proof", Tone.Green)
+                when (r.proof_needed) { 0 -> Badge("No proof needed", Tone.Green); 1 -> Badge("Proof needed", Tone.Amber) }
                 if (r.verdict == "likely" && vm.tab != Tab.Matches) Badge("Fits you", Tone.Blue)
             }
         }
