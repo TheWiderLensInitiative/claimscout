@@ -51,7 +51,8 @@ AI is optional and off by default.
 
 ## Removing everything
 
-Stop the service (`systemctl --user disable --now claimscout`), delete `~/.local/share/claimscout`, uninstall the
-app, and revoke the Gmail app password at https://myaccount.google.com/apppasswords.
+Run `~/claimscout/install.sh --uninstall` (or stop the service: `systemctl --user disable --now claimscout`),
+delete `~/.local/share/claimscout`, uninstall the app, and revoke the Gmail app password at
+https://myaccount.google.com/apppasswords.
 
 Questions: open an issue at https://github.com/TheWiderLensInitiative/claimscout/issues
