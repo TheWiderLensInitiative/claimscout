@@ -9,4 +9,5 @@
     <!-- "Claim" in the wordmark: ink by day, near-white at night -->
     <color name="brand_outline">#191A1C</color>
     <color name="brand_bg">#FFFFFF</color>
+    <color name="brand_night_bg">#121314</color>
 </resources>

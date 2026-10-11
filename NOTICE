@@ -1,0 +1,26 @@
+ClaimScout
+Copyright 2026 The Wider Lens Initiative Project
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+ClaimScout uses these projects and public sources:
+
+- Montserrat font, by Julieta Ulanovsky and contributors — SIL Open Font License 1.1 (brand/Montserrat-OFL.txt);
+  included in the Android app
+- Super Tiny Icons, by Edward Wang and contributors — MIT — https://github.com/edent/SuperTinyIcons
+- Simple Icons — CC0 1.0 — https://simpleicons.org
+- Wikidata and Wikimedia Commons — company websites and logo files (Wikidata is CC0; Commons files keep their own
+  licenses) — https://www.wikidata.org
+- JavaMail for Android (com.sun.mail:android-mail) — EPL 2.0 / GPL 2.0 with Classpath Exception
+- OkHttp (Square) — Apache-2.0; Jetpack Compose and AndroidX — Apache-2.0; kotlinx — Apache-2.0
+- FastAPI, Uvicorn, HTTPX, cryptography, qrcode, Pillow, resvg-py — their own permissive licenses
+
+Settlement listings are read from the public pages of Top Class Actions (topclassactions.com), ClassAction.org and
+OpenClassActions (openclassactions.com). Each listing links back to its source. ClaimScout fetches them from the
+user's own PC, a few requests every six hours.
+
+Company logos are shown on the user's own device, fetched from the sources above or the company's own website.
+They are trademarks of their owners and are used only to identify the company a settlement is about.
+
+ClaimScout is an independent project. It is not affiliated with, or endorsed by, any settlement administrator, law
+firm, listing site or company named in a settlement.

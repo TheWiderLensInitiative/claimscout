@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -13,13 +15,29 @@ android {
         minSdk = 28
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
         buildConfigField("String", "MS_CLIENT_ID", "\"${providers.gradleProperty("claimscout.microsoftClientId").getOrElse("")}\"")
+    }
+
+    // Release signing: the key lives outside the repo (default ~/.claimscout-release/keystore.properties, or
+    // $CLAIMSCOUT_KEYSTORE_PROPS). Without it, release builds come out unsigned and debug builds still work.
+    val keystoreProps = Properties().apply {
+        val f = file(System.getenv("CLAIMSCOUT_KEYSTORE_PROPS") ?: "${System.getProperty("user.home")}/.claimscout-release/keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    signingConfigs {
+        if (keystoreProps.getProperty("storeFile") != null) create("release") {
+            storeFile = file(keystoreProps.getProperty("storeFile"))
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     buildFeatures {
