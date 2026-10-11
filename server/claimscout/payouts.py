@@ -27,6 +27,12 @@ ADMINISTRATORS = [
 # A debt collector's "payment options" are money you'd pay, not money you're owed.
 DEBT = re.compile(r"debt collector|collection agency|attempt to collect a debt|past due|amount (you )?owe|balance (due|owed)|"
                   r"payment plan|trueaccord|settle (your|this) (account|balance|debt)|scheduling options", re.I)
+# A class notice goes to everyone who *might* be in the class ("Legal Notice", "Settlement Notice", "you may be
+# eligible"). It isn't a payment, unless it's about your own claim (a deficiency notice, a claim ID, your payment).
+CLASS_NOTICE = re.compile(r"(legal|settlement|class action|court.ordered|important) notice|notice of (proposed |pending )?"
+                          r"(class action )?settlement|you (may|might) (be|qualify)|if you (bought|purchased|paid|used|were)", re.I)
+OWN_CLAIM = re.compile(r"deficien|your claim|claim (id|number|no\.?|#)|claimant id|your (settlement )?payment|payment for your claim|"
+                       r"your (virtual|prepaid|digital) (card|payment)", re.I)
 # Talk that only an email about a class action claim has (a wallet or bank "your card" email doesn't).
 SETTLEMENT_TALK = re.compile(r"settlement|class action|litigation|your claim|claim (id|number|no\.?|#)|claimant", re.I)
 PHRASES = ["settlement administrator", "class action settlement", "virtual prepaid card", "virtual card",
@@ -76,6 +82,8 @@ def classify(m: dict) -> dict:
     # ("Claim your share of $380M!"). A payout comes from an administrator or talks about *your* claim.
     if mailfilter.is_marketing(m) or DEBT.search(blob) or not (
             _from_administrator(m.get("from", "")) or (mailfilter.is_personal(m) and SETTLEMENT_TALK.search(blob))):
+        return {"kind": "other", "amount": None, "expires": None, "settlement": None}
+    if CLASS_NOTICE.search(m.get("subject", "")) and not OWN_CLAIM.search(blob):
         return {"kind": "other", "amount": None, "expires": None, "settlement": None}
     # the subject says what the email is for; the body often lists every payment option
     kind = next((k for hay in (m.get("subject", ""), blob) for k, pat in KINDS.items()

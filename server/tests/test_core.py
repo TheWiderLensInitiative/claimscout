@@ -370,3 +370,11 @@ def test_payouts_from_the_users_inbox():
     assert settlement_name({"from": "Homebuyer Antitrust Litigation <homebuyersettlement@e.epiqnotice.com>",
                             "subject": "Reminder Homebuyer Antitrust Litigation Settlement Notice"}) == "Homebuyer Antitrust"
     assert settlement_name({"from": "x@y.com", "subject": "Hello", "text": "Sincerely, Settlement Court."}) is None
+    # a class notice sent to everyone who might be in the class is not a payment (the user doesn't qualify for it)
+    assert classify({"from": "Homebuyer Antitrust Litigation <homebuyersettlement@e.epiqnotice.com>",
+                     "subject": "Reminder Homebuyer Antitrust Litigation Settlement Notice",
+                     "text": "If you bought a home, you may be eligible. Payments may be made by PayPal, Venmo or check. "
+                             "Submit a claim by October 27, 2026."})["kind"] == "other"
+    # ...but a notice about your own claim still counts
+    assert classify({"from": "notice@pnclassaction.com", "subject": "Notice of deficiency - Lands End Settlement",
+                     "text": "Your claim is missing information."})["kind"] == "deficiency"
