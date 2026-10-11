@@ -14,8 +14,8 @@ android {
         applicationId = "info.thewiderlens.claimscout"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
         buildConfigField("String", "MS_CLIENT_ID", "\"${providers.gradleProperty("claimscout.microsoftClientId").getOrElse("")}\"")
     }
 

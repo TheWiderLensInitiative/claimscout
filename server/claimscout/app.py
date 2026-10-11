@@ -15,7 +15,7 @@ from .text import max_amount
 from .collectors import classactionorg, community, merge, openclassactions, topclassactions
 from .db import DB
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 APP_URL = "https://github.com/TheWiderLensInitiative/claimscout/releases/latest"
 REFRESH_EVERY = 6 * 3600
 WEB = Path(__file__).parent / "web"
@@ -265,6 +265,7 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
         claim = db.q("SELECT * FROM claims WHERE settlement_id=?", (sid,))
         s["logo"] = bool(s.get("logo"))
         s["amount"] = max_amount(s.get("award"))
+        s["website"] = s.get("website") or s.get("claim_url") or s.get("url")   # always something to read
         return {**s, "match": m, "proof_plan": plan, "claim": claim[0] if claim else None,
                 "proofs": db.q("SELECT * FROM proofs WHERE settlement_id=? ORDER BY date", (sid,))}
 

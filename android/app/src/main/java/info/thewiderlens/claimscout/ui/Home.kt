@@ -317,9 +317,10 @@ fun DetailScreen(vm: Vm) {
             if (d != null) Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
                 Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     d.website?.let { OutlinedButton({ openUrl(ctx, it) }, Modifier.weight(1f)) { Text("Learn more") } }
-                    d.claim_url?.let {
-                        Button({ openUrl(ctx, it) }, Modifier.weight(1.4f)) { Text(if (d.claim == null) "File claim" else "Open claim site") }
-                    }
+                    if (d.claim_url != null)
+                        Button({ openUrl(ctx, d.claim_url) }, Modifier.weight(1.4f)) { Text(if (d.claim == null) "File claim" else "Open claim site") }
+                    else   // the claim form isn't online yet; the server looks for it again on every refresh
+                        Button({}, Modifier.weight(1.4f), enabled = false) { Text("Claim form not open yet") }
                 }
             }
         }
