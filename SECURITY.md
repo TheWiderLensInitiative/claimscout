@@ -6,7 +6,7 @@ matters. What goes where is described in [docs/PRIVACY.md](docs/PRIVACY.md).
 ## Reporting a vulnerability
 
 Please **don't open a public issue** for security problems. Use GitHub's private vulnerability reporting
-(Security tab → "Report a vulnerability") with steps to reproduce. We'll reply as soon as we can.
+(Security tab → "Report a vulnerability") or email claimscout@thewiderlens.info, with steps to reproduce. We'll reply as soon as we can.
 
 ## How it's protected
 
