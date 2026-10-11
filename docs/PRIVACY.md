@@ -55,4 +55,4 @@ Run `~/claimscout/install.sh --uninstall` (or stop the service: `systemctl --use
 delete `~/.local/share/claimscout`, uninstall the app, and revoke the Gmail app password at
 https://myaccount.google.com/apppasswords.
 
-Questions: email news@thewiderlens.info or open an issue at https://github.com/TheWiderLensInitiative/claimscout/issues
+Questions: open an issue at https://github.com/TheWiderLensInitiative/claimscout/issues

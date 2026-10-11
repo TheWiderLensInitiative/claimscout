@@ -145,4 +145,4 @@ in-app drawables, and the dashboard mark. Colors: blue `#0081FE`, ink `#191A1C`.
 cd server && .venv/bin/python -m pytest -q
 ```
 
-Contact: news@thewiderlens.info · Created by DevIgnite × The Wider Lens Initiative Project · Apache 2.0 · see [NOTICE](NOTICE) for credits
+Created by DevIgnite × The Wider Lens Initiative Project · Apache 2.0 · see [NOTICE](NOTICE) for credits
