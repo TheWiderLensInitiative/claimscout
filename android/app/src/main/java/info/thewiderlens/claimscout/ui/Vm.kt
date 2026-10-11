@@ -55,6 +55,8 @@ class Vm(app: Application) : AndroidViewModel(app) {
     var busy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var proofNote by mutableStateOf<String?>(null)
+    /** Re-paired with a PC that already has your profile, but no email is connected on this phone yet. */
+    var welcomeBack by mutableStateOf(false)
     var findingProof by mutableStateOf(false)
     var profile by mutableStateOf<Profile?>(null)
     var payouts by mutableStateOf<List<Payout>>(emptyList())
@@ -108,8 +110,16 @@ class Vm(app: Application) : AndroidViewModel(app) {
     fun pair(link: String): Boolean {
         val p: Pairing = parsePairLink(link) ?: run { error = "That isn't a ClaimScout pairing link."; return false }
         launch {
-            Api(p).status()   // proves the token and certificate before saving
+            val a = Api(p)
+            val st = a.status()   // proves the token and certificate before saving
             store.setPairing(p)
+            if (st.profile_set) {
+                // re-pairing a PC that already knows you (new phone, reinstall): your answers and claims are on
+                // the PC, so skip the questionnaire, and don't re-announce matches you've already seen
+                store.addNotified(a.newSince(0.0).new.map { it.id })
+                store.setOnboarded(true)
+                if (accounts.value.isEmpty()) welcomeBack = true
+            }
             reload()
             if (!store.onboardedFlow.first()) startQuiz(full = true)
         }

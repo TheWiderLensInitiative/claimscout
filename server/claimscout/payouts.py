@@ -21,8 +21,14 @@ ADMINISTRATORS = [
     "americanlegalclaims.com", "classaction.org",
     # payment services used for settlement payouts
     "digitaldisbursements.com", "tangocard.com", "prepaiddigitalsolutions.com", "virtualrewardcenter.com",
-    "paymentservicesnetwork.com", "payments.epiqglobal.com", "e.paypal.com", "paypal.com", "venmo.com",
+    "paymentservicesnetwork.com", "payments.epiqglobal.com", "myprepaidcenter.com", "epiqnotice.com",
+    "e.paypal.com", "paypal.com", "venmo.com",
 ]
+# A debt collector's "payment options" are money you'd pay, not money you're owed.
+DEBT = re.compile(r"debt collector|collection agency|attempt to collect a debt|past due|amount (you )?owe|balance (due|owed)|"
+                  r"payment plan|trueaccord|settle (your|this) (account|balance|debt)|scheduling options", re.I)
+# Talk that only an email about a class action claim has (a wallet or bank "your card" email doesn't).
+SETTLEMENT_TALK = re.compile(r"settlement|class action|litigation|your claim|claim (id|number|no\.?|#)|claimant", re.I)
 PHRASES = ["settlement administrator", "class action settlement", "virtual prepaid card", "virtual card",
            "settlement payment", "payment election", "select your payment", "choose your payment",
            "digital payment", "claim number", "notice of deficiency", "settlement check"]
@@ -68,7 +74,8 @@ def classify(m: dict) -> dict:
     blob = f"{m.get('subject', '')}\n{m.get('text', '')}"
     # Ads are never payouts: a store promo ("win a $200 Virtual Visa Prepaid Card!") or a settlement newsletter
     # ("Claim your share of $380M!"). A payout comes from an administrator or talks about *your* claim.
-    if mailfilter.is_marketing(m) or not (_from_administrator(m.get("from", "")) or mailfilter.is_personal(m)):
+    if mailfilter.is_marketing(m) or DEBT.search(blob) or not (
+            _from_administrator(m.get("from", "")) or (mailfilter.is_personal(m) and SETTLEMENT_TALK.search(blob))):
         return {"kind": "other", "amount": None, "expires": None, "settlement": None}
     # the subject says what the email is for; the body often lists every payment option
     kind = next((k for hay in (m.get("subject", ""), blob) for k, pat in KINDS.items()
@@ -82,17 +89,43 @@ def classify(m: dict) -> dict:
             expires = (dt.date.fromisoformat(parse_date(m["date"])) + dt.timedelta(days=int(d.group(1)))).isoformat()
     if not expires and (d := re.search(r"(expire|void)[^.\n]{0,30}(\d{2,3}) days", blob, re.I)) and parse_date(m.get("date", "")):
         expires = (dt.date.fromisoformat(parse_date(m["date"])) + dt.timedelta(days=int(d.group(2)))).isoformat()
-    name = None
-    for src in (m.get("subject", ""), m.get("text", "")[:600]):
-        # "... from the T-Mobile Data Breach Settlement" names it best
-        if s := re.search(r"\bthe ([A-Z][\w&'’.\- ]{2,60}?)\s+(?i:class action\s+)?(?i:settlement)\b", src):
-            name = s.group(1).strip()
-            break
-        if s := re.search(r"([A-Z][\w&'’.,\- ]{2,80}?)\s+(?i:class action\s+)?(?i:settlement)\b", src):
-            name = re.sub(r"^(re|fwd?|your|the|important|action required|reminder)[:\s-]+", "", s.group(1).strip(), flags=re.I)
-            break
+    name = settlement_name(m)
     return {"kind": kind, "amount": (lambda a: f"${a:,.2f}".replace(".00", "") if a else None)(max_amount(blob)),
             "expires": expires, "settlement": name[:80] if name else None}
+
+
+_NOT_NAMES = {"sincerely", "court", "the", "this", "your", "our", "a", "an", "dear", "notice", "important", "re", "fwd"}
+
+
+def _good_name(n: str | None) -> str | None:
+    n = (n or "").strip(" -–:,")
+    words = re.findall(r"[A-Za-z][\w&'’.-]*", n)
+    if not words or n.endswith((".", ",")) and len(words) == 1 or all(w.lower().strip(".,") in _NOT_NAMES for w in words):
+        return None
+    return n[:80]
+
+
+def settlement_name(m: dict) -> str | None:
+    """Which settlement an email is about, best source first."""
+    sender, subject, text = m.get("from", ""), m.get("subject", ""), m.get("text", "")[:600]
+    # "Dr. Squatch Settlement Administrator" <notice@...>, "Homebuyer Antitrust Litigation" <...>
+    if s := re.search(r'^"?\s*([^"<]+?)\s+(?:Class Action\s+)?(?:Settlement|Litigation)\b[^"<]*"?\s*<', sender, re.I):
+        if n := _good_name(s.group(1)):
+            return n
+    # "Haney v. Costa Del Mar, Inc. – Claim Submission Confirmation" -> the defendant
+    if s := re.search(r"\bv(?:s)?\.\s+([A-Z][\w&'’ .-]{1,60}?)(?:,?\s+(?:Inc|LLC|Corp|Co)\b\.?)?\s*(?:[–—:-]|$)", subject):
+        if n := _good_name(s.group(1)):
+            return n
+    for src in (subject, text):
+        # "... from the T-Mobile Data Breach Settlement" names it best
+        if s := re.search(r"\bthe ([A-Z][\w&'’.\- ]{2,60}?)\s+(?i:class action\s+)?(?i:settlement)\b", src):
+            if n := _good_name(s.group(1)):
+                return n
+        if s := re.search(r"([A-Z][\w&'’.,\- ]{2,80}?)\s+(?i:class action\s+)?(?i:settlement)\b", src):
+            if n := _good_name(re.sub(r"^(re|fwd?|your|the|important|action required|reminder)[:\s-]+", "",
+                                      s.group(1).strip(), flags=re.I)):
+                return n
+    return None
 
 
 SYSTEM = ("You read settlement emails for one person and say whether money is waiting for them and what they must do. "

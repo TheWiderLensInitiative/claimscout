@@ -52,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -115,12 +116,23 @@ fun MainScreen(vm: Vm) {
 
 @Composable
 fun ListScreen(vm: Vm) {
+    val accounts by vm.accounts.collectAsState()
     val rows = if (vm.tab == Tab.Browse && vm.sortByPay) vm.rows.sortedByDescending { it.amount ?: -1.0 } else vm.rows
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, 24.dp)) {
         when (vm.tab) {
             Tab.Matches -> {
                 item { Hero(vm) }
                 val waiting = vm.payouts.filter { it.needs_action }
+                if (vm.welcomeBack && accounts.isEmpty()) item {
+                    Surface(Modifier.fillMaxWidth().clickable { vm.welcomeBack = false; vm.select(Tab.Settings) },
+                        shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Welcome back", style = MaterialTheme.typography.titleMedium)
+                            Text("Your answers and claims are all here. Reconnect your email so proof search and the payout " +
+                                "watcher work again. Tap to open Settings.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
                 if (waiting.isNotEmpty()) item { MoneyWaitingBanner(waiting.size) { vm.select(Tab.Claims) } }
             }
             Tab.Browse -> item { BrowseFilters(vm) }

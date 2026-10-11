@@ -15,7 +15,7 @@ from .text import max_amount
 from .collectors import classactionorg, community, merge, openclassactions, topclassactions
 from .db import DB
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 APP_URL = "https://github.com/TheWiderLensInitiative/claimscout/releases/latest"
 REFRESH_EVERY = 6 * 3600
 WEB = Path(__file__).parent / "web"

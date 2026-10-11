@@ -348,3 +348,25 @@ def test_labels_and_logo_guards():
     assert questions.rule_label("CBIZ Data Breach Settlement — Est. $100 or Up to $5,000") == "CBIZ"
     assert questions.rule_label("Skin360 - Biometric Privacy (Illinois)") == "Skin360"
     assert logos._foreign("https://www.lincoln.ac.nz") and not logos._foreign("https://www.ford.com")
+
+
+def test_payouts_from_the_users_inbox():
+    """Real emails from the user's inbox (subjects and senders as found, bodies abbreviated)."""
+    from claimscout.payouts import classify, settlement_name
+    # a debt collector's payment options are not money owed to you
+    assert classify({"from": "Nolan Davis <nolan@hello.trueaccord.com>", "subject": "Flexible scheduling options.",
+                     "text": "Your payment of $714.23 can be split. Choose your payment plan. This is an attempt to collect a debt."}
+                    )["kind"] == "other"
+    # a wallet welcome is not a settlement card
+    assert classify({"from": "Google Wallet <googlewallet-noreply@google.com>", "subject": "Jorge, welcome to Google Wallet",
+                     "text": "Add your card to pay with your phone. Your virtual card number keeps your card details private."}
+                    )["kind"] == "other"
+    assert classify({"from": "My Prepaid Center <noreply@myprepaidcenter.com>", "subject": "Your Virtual Prepaid Card",
+                     "text": "Your virtual prepaid card is ready to use."})["kind"] == "virtual_card"
+    assert settlement_name({"from": '"Dr. Squatch Settlement Administrator" <notice@pnclassaction.com>',
+                            "subject": "Claim Submission Confirmation - 3940923", "text": "Sincerely, the Court."}) == "Dr. Squatch"
+    assert settlement_name({"from": "NoReply@costasunglasslitigation.com",
+                            "subject": "Haney v. Costa Del Mar, Inc. – Claim Submission Confirmation", "text": "Sincerely,"}) == "Costa Del Mar"
+    assert settlement_name({"from": "Homebuyer Antitrust Litigation <homebuyersettlement@e.epiqnotice.com>",
+                            "subject": "Reminder Homebuyer Antitrust Litigation Settlement Notice"}) == "Homebuyer Antitrust"
+    assert settlement_name({"from": "x@y.com", "subject": "Hello", "text": "Sincerely, Settlement Court."}) is None
