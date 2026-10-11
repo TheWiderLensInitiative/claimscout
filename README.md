@@ -2,6 +2,8 @@
 
 # ClaimScout
 
+**Website:** https://claimscout.thewiderlens.info
+
 Find class action settlements you may qualify for, find the proof in your own email, and keep track of your
 claims. It runs on your PC, with an Android companion app. It's free and open source, with no account, no
 subscription and no paid APIs.
