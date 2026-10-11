@@ -33,18 +33,30 @@ subscription and no paid APIs.
    ClaimScout never submits claims: they are sworn under penalty of perjury, and only you can say you qualify.
 5. **Track.** Mark a claim as filed with its confirmation number, then update it to approved, paid or denied.
 
-## Install the PC server (Linux, macOS, Windows/WSL)
+## Install the PC server
+
+**Linux** (any distro with Python 3.10+ and systemd):
 
 ```bash
 git clone https://github.com/TheWiderLensInitiative/claimscout ~/claimscout
+cd ~/claimscout && ./install.sh
+```
+
+It makes a Python environment, installs the requirements and starts ClaimScout at login as a systemd user
+service. Update later with `git pull && ./install.sh`.
+
+**macOS, Windows (WSL) or by hand:**
+
+```bash
 cd ~/claimscout/server
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # or: uv venv && uv pip install -r requirements.txt
 .venv/bin/python -m claimscout serve
 ```
 
 * Dashboard: `.venv/bin/python -m claimscout open` (http://127.0.0.1:8788, only reachable from this PC)
-* Phone API: https on port 8787 (allow it through your firewall for your home network)
-* Run at login: `cp systemd/claimscout.service ~/.config/systemd/user/ && systemctl --user enable --now claimscout`
+* Phone API: https on port 8787 (allow it through your firewall for your home network or Tailscale only)
+* Other commands: `claimscout refresh` (check sources now), `claimscout pair` (pairing QR in the terminal),
+  `claimscout reset-token` (unpair every phone)
 
 Fill in **Profile** on the dashboard, then pair the phone from the **Phone** tab.
 
@@ -62,8 +74,17 @@ Any OpenAI-compatible endpoint works. A 7B–30B instruct model is plenty.
 
 ## The Android app
 
-Build it with `cd android && ./gradlew assembleDebug` (needs JDK 17+ and the Android SDK), or grab the APK from
-Releases. To pair, scan the QR code on the dashboard's **Phone** tab with your camera, or paste the link.
+Download the APK from [Releases](https://github.com/TheWiderLensInitiative/claimscout/releases/latest) (Android 9+),
+or build it with `cd android && ./gradlew assembleDebug` (needs JDK 17+ and the Android SDK). Release APKs are
+signed with this certificate (SHA-256):
+`17:47:90:CF:2A:DC:F8:D5:46:83:60:01:E8:FB:37:9D:18:B4:21:F4:0D:C0:81:EA:C3:36:F1:B0:E5:62:8F:30`
+
+To pair, scan the QR code on the dashboard's **Phone** tab with your camera, or paste the link. The first time,
+the app walks you through a short questionnaire that builds your profile, then email setup and notifications.
+
+* **Payout watcher:** every 4 hours the phone checks your inboxes, Spam included, for settlement payment emails
+  (virtual cards, "choose your payment" links, checks, requests for more information) and notifies you before
+  they expire.
 
 * **Gmail:** uses an [app password](https://myaccount.google.com/apppasswords) over IMAP and searches with
   Gmail's own syntax. No Google Cloud project is needed, and there's no 100-user cap on unverified apps.
@@ -87,6 +108,8 @@ Anyone can publish a list (a JSON file in a GitHub repo works) and anyone can su
 Only `http(s)` links are accepted.
 
 ## Privacy
+
+Full details: [docs/PRIVACY.md](docs/PRIVACY.md). Security reports: [SECURITY.md](SECURITY.md).
 
 Everything ClaimScout knows about you stays in `~/.local/share/claimscout` on your PC. On the phone, email
 passwords and tokens are sealed with an Android Keystore key and excluded from backups. Email is searched from the
@@ -113,4 +136,4 @@ in-app drawables, and the dashboard mark. Colors: blue `#0081FE`, ink `#191A1C`.
 cd server && .venv/bin/python -m pytest -q
 ```
 
-Created by DevIgnite × The Wider Lens Initiative Project · Apache 2.0
+Created by DevIgnite × The Wider Lens Initiative Project · Apache 2.0 · see [NOTICE](NOTICE) for credits

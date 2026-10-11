@@ -12,7 +12,7 @@ say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 say "Python environment"
 if command -v uv >/dev/null 2>&1; then
-    uv venv --python 3.12 .venv >/dev/null
+    uv venv -q --python 3.12 .venv
     uv pip install --python .venv/bin/python -q -r requirements.txt
 else
     PY="$(command -v python3 || true)"
