@@ -15,7 +15,8 @@ from .text import max_amount
 from .collectors import classactionorg, community, merge, openclassactions, topclassactions
 from .db import DB
 
-VERSION = "0.1.0"
+VERSION = "1.0.1"
+APP_URL = "https://github.com/TheWiderLensInitiative/claimscout/releases/latest"
 REFRESH_EVERY = 6 * 3600
 WEB = Path(__file__).parent / "web"
 
@@ -119,7 +120,7 @@ def create_app(db: DB, port=8787, dashboard=False, hub: Hub | None = None) -> Fa
                 raise HTTPException(403, "pairing is only shown on the PC itself")
             link = pairing.link(db, port)
             return {"link": link, "qr": pairing.qr_svg(link), "fingerprint": pairing.fingerprint(),
-                    "addresses": pairing.addresses()}
+                    "addresses": pairing.addresses(), "app_url": APP_URL, "app_qr": pairing.qr_svg(APP_URL)}
 
     @app.get("/api/status", dependencies=[api])
     def status():

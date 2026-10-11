@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -94,15 +97,28 @@ fun ErrorText(vm: Vm) = vm.error?.let {
 @Composable
 fun PairScreen(vm: Vm) {
     var link by remember { mutableStateOf("") }
+    var scanNote by remember { mutableStateOf<String?>(null) }
+    val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
+        val text = r.contents ?: return@rememberLauncherForActivityResult
+        if (text.startsWith("claimscout://")) { link = text; scanNote = null; vm.pair(text) }
+        else if (text.contains("github.com")) scanNote = "That's the code for downloading the app. Scan the second code, under \"pair it with this PC\"."
+        else scanNote = "That QR code isn't a ClaimScout pairing code."
+    }
     Scaffold { pad ->
         Column(Modifier.padding(pad).padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Image(painterResource(R.drawable.brand_logo), "ClaimScout",
                 Modifier.fillMaxWidth().padding(vertical = 16.dp).height(200.dp))
             Text("Finds class action settlements you may qualify for. It runs on your own PC, free, with no subscription.")
-            Text("1. On your PC, run ClaimScout and open the dashboard (claimscout open).\n" +
-                "2. Go to the Phone tab.\n3. Scan the QR code with this phone's camera, or copy the pairing link and paste it here.")
+            Text("On your PC, the installer shows a pairing QR code at the end. You can show it again any time with " +
+                "claimscout pair in a terminal, or on the dashboard's Phone tab (claimscout open).")
+            Button({
+                scan.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Scan the pairing code on your PC")
+                    .setBeepEnabled(false).setOrientationLocked(false))
+            }, enabled = !vm.busy, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing QR code") }
+            scanNote?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text("Or paste the pairing link:", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(link, { link = it }, label = { Text("Pairing link") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-            Button({ vm.pair(link) }, enabled = link.isNotBlank() && !vm.busy) { Text("Pair") }
+            OutlinedButton({ vm.pair(link) }, enabled = link.isNotBlank() && !vm.busy) { Text("Pair") }
             if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             ErrorText(vm)
         }

@@ -23,7 +23,9 @@ Nothing in it is sent anywhere, except as listed under "AI" below.
 - The pairing (PC address, token, certificate fingerprint) and a few settings.
 - Android backup is off for the app, so none of this is copied to Google Drive or a new phone.
 
-The app asks for two permissions: **Internet** and **Notifications** (new matches, deadlines, money waiting).
+Permissions: **Internet**, **Notifications** (new matches, deadlines, money waiting) and **Camera**, used only while
+you scan the pairing QR code; nothing is saved or sent. Android also lists the background-work permissions
+(wake lock, run at startup) that the scheduled email checks need.
 
 ## Email
 

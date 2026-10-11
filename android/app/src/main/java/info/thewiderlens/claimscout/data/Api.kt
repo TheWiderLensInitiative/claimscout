@@ -124,7 +124,8 @@ class Api(private val pairing: Pairing, private val onGood: suspend (String) -> 
                     ApiException("That isn't your ClaimScout PC (certificate changed). Pair again.") else e
             }
         }
-        throw ApiException("Can't reach your PC. Is ClaimScout running, and are you on home Wi-Fi or Tailscale? (${last.message})")
+        throw ApiException("Can't reach your PC. Is it on, and is this phone on the same Wi-Fi (or Tailscale)? " +
+            "On the PC, run claimscout doctor to see what's wrong. (${last.message})")
     }
 
     /** A company logo PNG from the PC, or null if it has none. */

@@ -12,6 +12,7 @@ ClaimScout uses these projects and public sources:
 - Wikidata and Wikimedia Commons — company websites and logo files (Wikidata is CC0; Commons files keep their own
   licenses) — https://www.wikidata.org
 - JavaMail for Android (com.sun.mail:android-mail) — EPL 2.0 / GPL 2.0 with Classpath Exception
+- ZXing and zxing-android-embedded (JourneyApps) — Apache-2.0 — the in-app QR scanner
 - OkHttp (Square) — Apache-2.0; Jetpack Compose and AndroidX — Apache-2.0; kotlinx — Apache-2.0
 - FastAPI, Uvicorn, HTTPX, cryptography, qrcode, Pillow, resvg-py — their own permissive licenses
 

@@ -14,8 +14,8 @@ android {
         applicationId = "info.thewiderlens.claimscout"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         buildConfigField("String", "MS_CLIENT_ID", "\"${providers.gradleProperty("claimscout.microsoftClientId").getOrElse("")}\"")
     }
 
@@ -67,5 +67,7 @@ dependencies {
     // Gmail over IMAP with an app password: no Google Cloud project, no restricted-scope review
     implementation("com.sun.mail:android-mail:1.6.8")
     implementation("com.sun.mail:android-activation:1.6.8")
+    // in-app QR scanner for pairing (many camera apps won't open claimscout:// links)
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("junit:junit:4.13.2")
 }

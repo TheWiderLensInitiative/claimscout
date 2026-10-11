@@ -35,15 +35,21 @@ subscription and no paid APIs.
 
 ## Install the PC server
 
-**Linux** (any distro with Python 3.10+ and systemd):
+**Linux**, one command:
 
 ```bash
-git clone https://github.com/TheWiderLensInitiative/claimscout ~/claimscout
-cd ~/claimscout && ./install.sh
+curl -fsSL https://raw.githubusercontent.com/TheWiderLensInitiative/claimscout/main/install.sh | bash
 ```
 
-It makes a Python environment, installs the requirements and starts ClaimScout at login as a systemd user
-service. Update later with `git pull && ./install.sh`.
+It downloads ClaimScout to `~/claimscout`, gets Python if you don't have it (through [uv](https://docs.astral.sh/uv/),
+no sudo), starts ClaimScout in the background at login, offers to open your firewall for your home network, and
+ends with two QR codes: one to download the phone app, one to pair it. No root needed except for the firewall step.
+
+* Update: run the same command again (or `cd ~/claimscout && git pull && ./install.sh`)
+* Something not working: `claimscout doctor` checks the server, network addresses, firewall, Tailscale and the
+  settlement sources, and says what to do in plain words
+* Show the pairing code again: `claimscout pair`
+* Remove it: `~/claimscout/install.sh --uninstall` (keeps your data unless you delete `~/.local/share/claimscout`)
 
 **macOS, Windows (WSL) or by hand:**
 
@@ -56,7 +62,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # or: uv ve
 * Dashboard: `.venv/bin/python -m claimscout open` (http://127.0.0.1:8788, only reachable from this PC)
 * Phone API: https on port 8787 (allow it through your firewall for your home network or Tailscale only)
 * Other commands: `claimscout refresh` (check sources now), `claimscout pair` (pairing QR in the terminal),
-  `claimscout reset-token` (unpair every phone)
+  `claimscout doctor` (find problems), `claimscout reset-token` (unpair every phone)
 
 Fill in **Profile** on the dashboard, then pair the phone from the **Phone** tab.
 
@@ -79,7 +85,8 @@ or build it with `cd android && ./gradlew assembleDebug` (needs JDK 17+ and the 
 signed with this certificate (SHA-256):
 `17:47:90:CF:2A:DC:F8:D5:46:83:60:01:E8:FB:37:9D:18:B4:21:F4:0D:C0:81:EA:C3:36:F1:B0:E5:62:8F:30`
 
-To pair, scan the QR code on the dashboard's **Phone** tab with your camera, or paste the link. The first time,
+To pair, tap **Scan pairing QR code** in the app and scan the code the installer showed (or `claimscout pair`, or
+the dashboard's **Phone** tab). Pasting the link works too. The first time,
 the app walks you through a short questionnaire that builds your profile, then email setup and notifications.
 
 * **Payout watcher:** every 4 hours the phone checks your inboxes, Spam included, for settlement payment emails
